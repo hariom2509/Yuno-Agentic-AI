@@ -13,17 +13,31 @@ from sqlalchemy.orm import sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# If running locally outside docker and Postgres is not started, fallback to SQLite
-if not DATABASE_URL or "@postgres:" in DATABASE_URL:
+def test_connection(url: str) -> bool:
     try:
-        # Check if a local postgres is running on localhost
-        temp_url = "postgresql://postgres:postgres@localhost:5432/yuno_ai"
-        engine_check = create_engine(temp_url)
+        # Use a short timeout of 2 seconds for verification to avoid blocking startup
+        engine_check = create_engine(url, connect_args={"connect_timeout": 2} if not url.startswith("sqlite") else {})
         with engine_check.connect() as conn:
             pass
-        DATABASE_URL = temp_url
+        return True
     except Exception:
-        DATABASE_URL = "sqlite:///./yuno_ai.db"
+        return False
+
+# Robust fallback selection:
+if DATABASE_URL:
+    # If the provided URL connects successfully (e.g. Postgres container inside docker-compose), use it!
+    if test_connection(DATABASE_URL):
+        pass
+    else:
+        # Fallback 1: check for local postgres on localhost
+        local_postgres = "postgresql://postgres:postgres@localhost:5432/yuno_ai"
+        if test_connection(local_postgres):
+            DATABASE_URL = local_postgres
+        else:
+            # Fallback 2: sqlite
+            DATABASE_URL = "sqlite:///./yuno_ai.db"
+else:
+    DATABASE_URL = "sqlite:///./yuno_ai.db"
 
 # SQLite requires different arguments for multi-threading safety
 if DATABASE_URL.startswith("sqlite"):

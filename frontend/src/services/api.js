@@ -6,6 +6,13 @@ const getBaseURL = () => {
   }
   const protocol = window.location.protocol;
   const hostname = window.location.hostname;
+  const port = window.location.port;
+
+  // If in production (single container serving both frontend & backend),
+  // make request relative to the serving host and port
+  if (port && port !== "3000" && port !== "3001") {
+    return "";
+  }
   return `${protocol}//${hostname}:8001`;
 };
 

@@ -7,6 +7,12 @@ import api from "../services/api";
 const getWSUrl = () => {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const hostname = window.location.hostname;
+  const port = window.location.port;
+
+  // Use the exact host and port that served the app in production
+  if (port && port !== "3000" && port !== "3001") {
+    return `${protocol}//${hostname}:${port}/ws/executions`;
+  }
   return `${protocol}//${hostname}:8001/ws/executions`;
 };
 

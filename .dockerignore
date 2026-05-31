@@ -1,0 +1,37 @@
+# Exclude dependencies and packages
+**/node_modules
+**/bower_components
+
+# Exclude compile and build directories
+**/build
+**/dist
+**/out
+**/.next
+**/.nuxt
+
+# Exclude python caches and virtual envs
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache
+**/.venv
+**/venv
+**/env
+**/ENV
+
+# Exclude databases and logs
+**/*.db
+**/*.sqlite
+**/*.log
+backend/yuno_ai.db
+
+# Exclude git directories and developer configuration files
+.git
+.gitignore
+.dockerignore
+.vscode
+.idea
+**/.env
+**/.env.local
+**/.env.*.local

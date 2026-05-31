@@ -106,6 +106,29 @@ async def shutdown():
     logger.info("Yuno AI Agent Platform stopped.")
 
 
-@app.get("/")
+@app.get("/health")
 def health_check():
     return {"status": "running", "version": "1.0.0"}
+
+
+# SPA Single-Container Static Files Routing Fallback
+import os
+from fastapi.responses import FileResponse
+
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+if os.path.exists(STATIC_DIR):
+    from fastapi.staticfiles import StaticFiles
+    
+    # Mount `/static` sub-assets folder if compiled
+    static_assets = os.path.join(STATIC_DIR, "static")
+    if os.path.exists(static_assets):
+        app.mount("/static", StaticFiles(directory=static_assets), name="static")
+    
+    # SPA catch-all endpoint: routes non-file hits back to index.html for React routing
+    @app.get("/{catchall:path}")
+    async def serve_spa(catchall: str):
+        file_path = os.path.join(STATIC_DIR, catchall)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(STATIC_DIR, "index.html"))
