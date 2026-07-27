@@ -9,6 +9,7 @@ class AgentCreate(BaseModel):
     system_prompt: str
     model: str = "llama-3.3-70b-versatile"
     tools: Optional[List[str]] = []
+    mcp_tool_ids: Optional[List[int]] = []
     memory_enabled: bool = True
     max_iterations: int = 5
     max_tokens: int = 2000
@@ -25,6 +26,7 @@ class AgentUpdate(BaseModel):
     system_prompt: Optional[str] = None
     model: Optional[str] = None
     tools: Optional[List[str]] = None
+    mcp_tool_ids: Optional[List[int]] = None
     memory_enabled: Optional[bool] = None
     max_iterations: Optional[int] = None
     max_tokens: Optional[int] = None
