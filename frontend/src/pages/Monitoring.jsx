@@ -13,7 +13,7 @@ const getWSUrl = () => {
   if (port && port !== "3000" && port !== "3001") {
     return `${protocol}//${hostname}:${port}/ws/executions`;
   }
-  return `${protocol}//${hostname}:8000/ws/executions`;
+  return `${protocol}//${hostname}:8001/ws/executions`;
 };
 
 const WS_URL = getWSUrl();
@@ -56,9 +56,8 @@ function MessageItem({ msg }) {
   );
 }
 
-function ExecutionRow({ execution, isExpanded, onToggle, onRefresh }) {
+function ExecutionRow({ execution, isExpanded, onToggle }) {
   const [messages, setMessages] = useState([]);
-  const [resuming, setResuming] = useState(false);
 
   useEffect(() => {
     if (isExpanded) {
@@ -67,19 +66,6 @@ function ExecutionRow({ execution, isExpanded, onToggle, onRefresh }) {
         .catch(() => {});
     }
   }, [isExpanded, execution.id]);
-
-  const handleResume = async (decision) => {
-    setResuming(true);
-    try {
-      await api.post(`/executions/${execution.id}/resume`, { decision });
-      toast.success(`Workflow #${execution.id} decision (${decision}) submitted!`);
-      if (onRefresh) onRefresh();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Failed to submit HITL decision");
-    } finally {
-      setResuming(false);
-    }
-  };
 
   const duration = execution.started_at && execution.completed_at
     ? ((new Date(execution.completed_at) - new Date(execution.started_at)) / 1000).toFixed(1) + "s"
@@ -109,51 +95,6 @@ function ExecutionRow({ execution, isExpanded, onToggle, onRefresh }) {
       {isExpanded && (
         <tr>
           <td colSpan={7} style={{ background: "var(--bg-elevated)", padding: 20 }}>
-            {execution.status === "waiting_for_approval" && (
-              <div style={{
-                background: "rgba(245, 158, 11, 0.12)",
-                border: "1px solid rgba(245, 158, 11, 0.5)",
-                borderRadius: 8,
-                padding: 16,
-                marginBottom: 16
-              }}>
-                <div style={{ color: "#f59e0b", fontWeight: 700, fontSize: 15, marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
-                  <span>⚠️</span> HUMAN-IN-THE-LOOP APPROVAL REQUIRED
-                </div>
-                <div style={{ fontSize: 13, color: "var(--text-primary)", marginBottom: 12 }}>
-                  Execution paused at node <code>{execution.current_node}</code>. A critical or security-sensitive tool operation requires human authorization.
-                  {execution.approval_data && (
-                    <div style={{ marginTop: 8, fontSize: 12, fontFamily: "JetBrains Mono, monospace", background: "rgba(0,0,0,0.3)", padding: 8, borderRadius: 4 }}>
-                      {JSON.stringify(execution.approval_data, null, 2)}
-                    </div>
-                  )}
-                </div>
-                <div style={{ display: "flex", gap: 12 }}>
-                  <button
-                    disabled={resuming}
-                    className="btn btn-sm"
-                    style={{ background: "#22c55e", color: "#fff", fontWeight: 600, padding: "6px 14px" }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleResume("APPROVED");
-                    }}
-                  >
-                    {resuming ? "Submitting..." : "✅ Approve & Resume"}
-                  </button>
-                  <button
-                    disabled={resuming}
-                    className="btn btn-sm"
-                    style={{ background: "#ef4444", color: "#fff", fontWeight: 600, padding: "6px 14px" }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleResume("REJECTED");
-                    }}
-                  >
-                    {resuming ? "Submitting..." : "❌ Reject Execution"}
-                  </button>
-                </div>
-              </div>
-            )}
             {execution.final_output && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Final Output</div>
@@ -312,7 +253,6 @@ export default function Monitoring() {
                       execution={ex}
                       isExpanded={expanded === ex.id}
                       onToggle={() => setExpanded(expanded === ex.id ? null : ex.id)}
-                      onRefresh={load}
                     />
                   ))}
                 </tbody>

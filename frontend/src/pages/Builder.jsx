@@ -16,29 +16,19 @@ import { Save, Plus, Trash2, X, Settings2 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../services/api";
 
-function formatToolLabel(toolIdentifier) {
-  if (!toolIdentifier) return "Web Search";
-  if (toolIdentifier.includes("::")) {
-    const raw = toolIdentifier.split("::").pop();
-    return raw.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
-  }
-  return toolIdentifier.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
-}
-
 // Custom Node Components
 function AgentNodeComponent({ data }) {
-  const isTool = data.type === "tool";
   return (
-    <div className={`agent-node ${isTool ? "tool-node" : ""}`} style={{ position: "relative" }}>
+    <div className="agent-node" style={{ minWidth: 160, position: "relative" }}>
       {/* Target handle (input) on top */}
-      <Handle type="target" position={Position.Top} style={{ background: isTool ? "var(--purple)" : "var(--accent)", width: 12, height: 12 }} />
+      <Handle type="target" position={Position.Top} style={{ background: "var(--accent)", width: 8, height: 8 }} />
       
-      <div style={{ fontSize: 32, marginBottom: 8 }}>{isTool ? "🔧" : "🤖"}</div>
+      <div style={{ fontSize: 20, marginBottom: 6 }}>🤖</div>
       <div className="agent-node-title">{data.label}</div>
-      <div className="agent-node-role">{isTool ? `tool: ${formatToolLabel(data.tool)}` : data.model || "llama-3.3-70b-versatile"}</div>
+      <div className="agent-node-role">{data.type === "tool" ? `tool: ${data.tool}` : data.model || "llama-3.1-8b-instant"}</div>
       
       {/* Source handle (output) on bottom */}
-      <Handle type="source" position={Position.Bottom} style={{ background: isTool ? "var(--purple)" : "var(--accent)", width: 12, height: 12 }} />
+      <Handle type="source" position={Position.Bottom} style={{ background: "var(--accent)", width: 8, height: 8 }} />
     </div>
   );
 }
@@ -46,11 +36,11 @@ function AgentNodeComponent({ data }) {
 const nodeTypes = { agentNode: AgentNodeComponent };
 
 const NODE_PALETTE = [
-  { type: "agent", label: "Agent Node", icon: "🤖", desc: "AI agent powered by LLM" },
-  { type: "tool", label: "Tool Node", icon: "🔧", desc: "Execute a tool (search, calc, report, MCP)" },
+  { type: "agent", label: "Agent Node", icon: "🤖", desc: "AI agent powered by OpenAI" },
+  { type: "tool", label: "Tool Node", icon: "🔧", desc: "Execute a tool (search, calc, report)" },
 ];
 
-function NodeConfigPanel({ node, availableTools, capabilityGroups, onUpdate, onClose }) {
+function NodeConfigPanel({ node, availableTools, onUpdate, onClose }) {
   const [data, setData] = useState(node.data);
 
   const set = (k, v) => setData(d => ({ ...d, [k]: v }));
@@ -61,10 +51,9 @@ function NodeConfigPanel({ node, availableTools, capabilityGroups, onUpdate, onC
 
   return (
     <div style={{
-      position: "absolute", right: 0, top: 0, bottom: 0, width: 420,
-      background: "var(--bg-surface)", borderLeft: "1px solid var(--border-bright)",
-      padding: 24, overflowY: "auto", zIndex: 10,
-      boxShadow: "-12px 0 32px rgba(0, 0, 0, 0.4)",
+      position: "absolute", right: 0, top: 0, bottom: 0, width: 340,
+      background: "var(--bg-surface)", borderLeft: "1px solid var(--border)",
+      padding: 20, overflowY: "auto", zIndex: 10,
     }}>
       <div className="flex items-center justify-between mb-16">
         <div style={{ fontWeight: 600 }}>Configure Node</div>
@@ -129,24 +118,10 @@ function NodeConfigPanel({ node, availableTools, capabilityGroups, onUpdate, onC
       {data.type === "tool" && (
         <div className="form-group">
           <label className="form-label">Tool</label>
-          <select className="form-select" value={data.tool || "mcp::yuno-tools::web_search"} onChange={e => set("tool", e.target.value)}>
-            {(capabilityGroups && capabilityGroups.length > 0) ? (
-              capabilityGroups.map(group => (
-                <optgroup key={group.id} label={group.name}>
-                  {group.tools.map(tool => (
-                    <option key={tool.canonical_name || tool.id} value={tool.canonical_name || tool.id}>
-                      {tool.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))
-            ) : (
-              (availableTools || []).map(tool => {
-                const val = typeof tool === "string" ? tool : (tool.id || tool.canonical_name);
-                const lbl = typeof tool === "string" ? tool : (tool.label || tool.name || tool.id);
-                return <option key={val} value={val}>{lbl}</option>;
-              })
-            )}
+          <select className="form-select" value={data.tool || "web_search"} onChange={e => set("tool", e.target.value)}>
+            {availableTools.map(tool => (
+              <option key={tool} value={tool}>{tool}</option>
+            ))}
           </select>
         </div>
       )}
@@ -207,56 +182,21 @@ export default function Builder() {
   const [selectedNode, setSelectedNode] = useState(null);
   const [selectedEdge, setSelectedEdge] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [availableTools, setAvailableTools] = useState(["mcp::yuno-tools::web_search", "mcp::yuno-tools::calculator", "mcp::yuno-tools::report_generator", "mcp::yuno-tools::file_reader"]);
-  const [capabilityGroups, setCapabilityGroups] = useState([]);
+  const [availableTools, setAvailableTools] = useState(["web_search", "calculator", "report_generator", "file_reader"]);
   const [nodeCounter, setNodeCounter] = useState(1);
 
   useEffect(() => {
-    // Fetch builder-visible tools from Capability API
-    api.get("/capabilities/builder-tools").then(res => {
-      const groups = res.data?.groups || [];
-      setCapabilityGroups(groups);
-      const toolList = [];
-      groups.forEach(group => {
-        (group.tools || []).forEach(t => {
-          toolList.push(t.canonical_name || t.id);
-        });
-      });
-      if (toolList.length > 0) {
-        setAvailableTools(toolList);
-      }
-    }).catch(() => {
-      setAvailableTools([
-        "mcp::yuno-tools::web_search",
-        "mcp::yuno-tools::calculator",
-        "mcp::yuno-tools::report_generator",
-        "mcp::yuno-tools::file_reader",
-        "mcp::yuno-tools::analyze_text",
-        "mcp::yuno-tools::calculate_metrics",
-        "mcp::yuno-tools::format_report"
-      ]);
-    });
+    // Fetch available skills
+    api.get("/skills/").then(s => {
+      const skillNames = (s.data || []).map(sk => sk.name);
+      setAvailableTools(["web_search", "calculator", "report_generator", "file_reader", ...skillNames]);
+    }).catch(() => {});
 
     if (!workflowId) return;
     api.get(`/workflows/${workflowId}`).then(r => {
       setWorkflow(r.data);
       const graph = r.data.graph || {};
-      const safeNodes = (graph.nodes || []).map((n, idx) => ({
-        ...n,
-        type: n.type || "agentNode",
-        position: n.position || { x: 120 + idx * 280, y: 180 },
-        data: {
-          label: n.data?.label || n.id || `Node ${idx + 1}`,
-          type: n.type === "toolNode" || n.data?.type === "tool" || n.data?.tool ? "tool" : "agent",
-          tool: n.data?.tool || "",
-          model: n.data?.model || "llama-3.1-8b-instant",
-          system_prompt: n.data?.prompt || n.data?.system_prompt || "",
-          temperature: n.data?.temperature || 0.7,
-          memory_enabled: n.data?.memory_enabled !== false,
-          guardrails: n.data?.guardrails || {},
-        }
-      }));
-      setNodes(safeNodes);
+      setNodes(graph.nodes || []);
       setEdges(graph.edges || []);
     }).catch(() => toast.error("Failed to load workflow"));
   }, [workflowId]);
@@ -305,26 +245,18 @@ export default function Builder() {
   };
 
   const save = async () => {
+    if (!workflowId) {
+      toast.error("Please open a workflow first from the Workflows page.");
+      return;
+    }
     setSaving(true);
     try {
-      if (!workflowId) {
-        const name = window.prompt("Enter a name for your new workflow:", "My Visual Workflow") || "My Visual Workflow";
-        const res = await api.post("/workflows/", {
-          name: name,
-          description: "Created in Visual Builder",
-          graph: { nodes, edges },
-        });
-        setWorkflow(res.data);
-        navigate(`/builder/${res.data.id}`, { replace: true });
-        toast.success(`Workflow '${res.data.name}' created and saved!`);
-      } else {
-        await api.put(`/workflows/${workflowId}`, {
-          name: workflow?.name || "Untitled",
-          description: workflow?.description || "",
-          graph: { nodes, edges },
-        });
-        toast.success("Workflow graph saved!");
-      }
+      await api.put(`/workflows/${workflowId}`, {
+        name: workflow?.name || "Untitled",
+        description: workflow?.description || "",
+        graph: { nodes, edges },
+      });
+      toast.success("Workflow graph saved!");
     } catch {
       toast.error("Save failed");
     } finally {
@@ -335,20 +267,20 @@ export default function Builder() {
   return (
     <div style={{ position: "relative", height: "calc(100vh - 64px)", display: "flex" }}>
       {/* Left palette */}
-      <div style={{ width: 240, background: "var(--bg-surface)", borderRight: "1px solid var(--border-bright)", padding: 20, flexShrink: 0 }}>
-        <div style={{ fontWeight: 700, marginBottom: 14, fontSize: 14, color: "var(--text-primary)" }}>Node Palette</div>
+      <div style={{ width: 200, background: "var(--bg-surface)", borderRight: "1px solid var(--border)", padding: 16, flexShrink: 0 }}>
+        <div style={{ fontWeight: 600, marginBottom: 12, fontSize: 13 }}>Node Palette</div>
         {NODE_PALETTE.map(n => (
           <div
             key={n.type}
             className="card"
-            style={{ marginBottom: 12, cursor: "grab", padding: "12px 14px", border: "1px solid var(--border-bright)" }}
+            style={{ marginBottom: 10, cursor: "grab", padding: "10px 12px" }}
             onClick={() => addNode(n.type)}
           >
-            <div className="flex items-center gap-12">
-              <span style={{ fontSize: 24 }}>{n.icon}</span>
+            <div className="flex items-center gap-8">
+              <span style={{ fontSize: 18 }}>{n.icon}</span>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{n.label}</div>
-                <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>{n.desc}</div>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>{n.label}</div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{n.desc}</div>
               </div>
             </div>
           </div>
@@ -357,18 +289,18 @@ export default function Builder() {
         <div className="divider" />
 
         {workflowId ? (
-          <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-            Editing: <strong style={{ color: "var(--text-primary)" }}>{workflow?.name}</strong>
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            Editing: <strong style={{ color: "var(--text-secondary)" }}>{workflow?.name}</strong>
           </div>
         ) : (
-          <div style={{ fontSize: 12, color: "var(--accent)" }}>
-            ✨ Draft canvas. Click <strong>Save Graph</strong> anytime to name and persist.
+          <div style={{ fontSize: 11, color: "var(--yellow)" }}>
+            ⚠️ No workflow selected. Open a workflow from the Workflows page.
           </div>
         )}
 
         <button
           className="btn btn-ghost btn-sm w-full mt-16"
-          style={{ fontSize: 12 }}
+          style={{ fontSize: 11 }}
           onClick={() => navigate("/workflows")}
         >
           ← Back to Workflows
@@ -387,9 +319,6 @@ export default function Builder() {
           onNodeClick={(_, node) => { setSelectedNode(node); setSelectedEdge(null); }}
           onEdgeClick={(_, edge) => { setSelectedEdge(edge); setSelectedNode(null); }}
           fitView
-          fitViewOptions={{ padding: 0.35 }}
-          minZoom={0.4}
-          maxZoom={2.5}
         >
           <Background color="var(--border)" gap={24} />
           <Controls />
@@ -430,7 +359,6 @@ export default function Builder() {
         <NodeConfigPanel
           node={selectedNode}
           availableTools={availableTools}
-          capabilityGroups={capabilityGroups}
           onUpdate={(data) => updateNodeData(selectedNode.id, data)}
           onClose={() => setSelectedNode(null)}
         />

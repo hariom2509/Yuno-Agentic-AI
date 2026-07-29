@@ -27,8 +27,6 @@ def get_executions(db: Session = Depends(get_db)):
             "final_output": e.final_output,
             "tokens_used": e.tokens_used,
             "cost_usd": e.cost_usd,
-            "thread_id": e.thread_id,
-            "approval_data": e.approval_data,
             "started_at": e.started_at.isoformat() if e.started_at else None,
             "completed_at": e.completed_at.isoformat() if e.completed_at else None,
         }

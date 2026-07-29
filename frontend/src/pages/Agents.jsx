@@ -3,27 +3,7 @@ import { Plus, Pencil, Trash2, X, Bot } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../services/api";
 
-const YUNO_TOOLS = [
-  { id: "mcp::yuno-tools::web_search", label: "Web Search" },
-  { id: "mcp::yuno-tools::calculator", label: "Calculator" },
-  { id: "mcp::yuno-tools::report_generator", label: "Report Generator" },
-  { id: "mcp::yuno-tools::file_reader", label: "File Reader" },
-  { id: "mcp::yuno-tools::analyze_text", label: "Analyze Text" },
-  { id: "mcp::yuno-tools::calculate_metrics", label: "Calculate Metrics" },
-  { id: "mcp::yuno-tools::format_report", label: "Format Report" },
-];
-
-const POSTGRES_MCP_TOOLS = [
-  { id: "mcp::postgres-mcp::inspect_schema", label: "Inspect Schema", risk: "LOW", requires_approval: false },
-  { id: "mcp::postgres-mcp::list_tables", label: "List Tables", risk: "LOW", requires_approval: false },
-  { id: "mcp::postgres-mcp::describe_table", label: "Describe Table", risk: "LOW", requires_approval: false },
-  { id: "mcp::postgres-mcp::execute_select", label: "Execute Select", risk: "LOW", requires_approval: false },
-  { id: "mcp::postgres-mcp::insert_row", label: "Insert Row", risk: "HIGH", requires_approval: true },
-  { id: "mcp::postgres-mcp::update_rows", label: "Update Rows", risk: "HIGH", requires_approval: true },
-  { id: "mcp::postgres-mcp::truncate_table", label: "Truncate Table", risk: "CRITICAL", requires_approval: true },
-  { id: "mcp::postgres-mcp::drop_table", label: "Drop Table", risk: "CRITICAL", requires_approval: true },
-];
-
+const DEFAULT_TOOLS = ["web_search", "calculator", "report_generator", "file_reader"];
 const MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "llama3-70b-8192", "llama3-8b-8192", "gemini-1.5-flash"];
 const CHANNELS = ["none", "telegram"];
 
@@ -113,7 +93,7 @@ function AgentModal({ agent, availableTools, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal modal-wide" style={{ width: 760, fontSize: "14px", lineHeight: "1.5" }}>
+      <div className="modal modal-wide">
         <div className="modal-header">
           <div className="modal-title">{agent?.id ? "Edit Agent" : "Create Agent"}</div>
           <button className="btn btn-icon btn-ghost" onClick={onClose}><X size={16} /></button>
@@ -168,85 +148,19 @@ function AgentModal({ agent, availableTools, onClose, onSaved }) {
             </div>
           </div>
 
-          {/* AGENT CAPABILITIES & MCP INTEGRATIONS */}
-          <div className="divider" style={{ margin: "24px 0 16px" }} />
-          <div style={{ fontWeight: 700, fontSize: "14px", color: "var(--accent)", marginBottom: 16, letterSpacing: "0.5px" }}>
-            🛠️ AGENT CAPABILITIES & MCP INTEGRATIONS
-          </div>
-
-          {/* Group 1: Yuno Tools */}
-          <div className="form-group" style={{ marginBottom: 20 }}>
-            <label className="form-label" style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-bright)", marginBottom: 8 }}>
-              Yuno Tools (Built-in Workflow Capabilities)
-            </label>
+          <div className="form-group">
+            <label className="form-label">Tools</label>
             <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
-              {YUNO_TOOLS.map(tool => {
-                const isSelected = form.tools.includes(tool.id) || form.tools.includes(tool.id.split("::").pop());
-                return (
-                  <button
-                    key={tool.id}
-                    type="button"
-                    style={{ fontSize: "13px", padding: "6px 14px", borderRadius: "6px" }}
-                    className={`btn btn-sm ${isSelected ? "btn-primary" : "btn-ghost"}`}
-                    onClick={() => toggleTool(tool.id)}
-                  >
-                    {isSelected ? "✓ " : ""}{tool.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Group 2: External MCP Integrations - PostgreSQL MCP */}
-          <div className="form-group" style={{ marginBottom: 24 }}>
-            <div className="flex items-center justify-between mb-12">
-              <label className="form-label" style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-bright)", marginBottom: 0 }}>
-                External MCP Integration: PostgreSQL MCP
-              </label>
-              <span style={{ fontSize: "11px", padding: "2px 8px", background: "var(--accent-glow)", border: "1px solid var(--accent)", borderRadius: "12px", color: "var(--accent)", fontWeight: 600 }}>
-                Enabled ✓
-              </span>
-            </div>
-            <div className="card-grid card-grid-2" style={{ gap: 8 }}>
-              {POSTGRES_MCP_TOOLS.map(tool => {
-                const isSelected = form.tools.includes(tool.id) || form.tools.includes(tool.id.split("::").pop());
-                const isRiskHigh = tool.risk === "HIGH" || tool.risk === "CRITICAL";
-                return (
-                  <div
-                    key={tool.id}
-                    onClick={() => toggleTool(tool.id)}
-                    style={{
-                      padding: "10px 14px",
-                      borderRadius: 6,
-                      background: isSelected ? "var(--bg-card-hover)" : "var(--bg-surface)",
-                      border: isSelected ? "1.5px solid var(--accent)" : "1px solid var(--border)",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      transition: "all 0.15s ease"
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <input type="checkbox" checked={isSelected} readOnly style={{ cursor: "pointer", width: 15, height: 15 }} />
-                      <span style={{ fontSize: "13px", fontWeight: isSelected ? 600 : 400, color: isSelected ? "var(--text-bright)" : "var(--text-primary)" }}>
-                        {tool.label}
-                      </span>
-                    </div>
-                    <span style={{
-                      fontSize: "10px",
-                      padding: "2px 6px",
-                      borderRadius: 4,
-                      fontWeight: 700,
-                      background: isRiskHigh ? "rgba(239, 68, 68, 0.15)" : "rgba(34, 197, 94, 0.15)",
-                      color: isRiskHigh ? "#ef4444" : "#22c55e",
-                      border: `1px solid ${isRiskHigh ? "rgba(239, 68, 68, 0.3)" : "rgba(34, 197, 94, 0.3)"}`
-                    }}>
-                      {tool.risk} {tool.requires_approval ? "· Approval Required" : ""}
-                    </span>
-                  </div>
-                );
-              })}
+              {availableTools.map(tool => (
+                <button
+                  key={tool}
+                  type="button"
+                  className={`btn btn-sm ${form.tools.includes(tool) ? "btn-primary" : "btn-ghost"}`}
+                  onClick={() => toggleTool(tool)}
+                >
+                  {tool}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -337,14 +251,7 @@ export default function Agents() {
       setAgents(r.data || []);
       const s = await api.get("/skills/");
       const skillNames = (s.data || []).map(sk => sk.name);
-      
-      const capRes = await api.get("/capabilities/agent-tools").catch(() => ({ data: [] }));
-      const agentMcpTools = (capRes.data || []).map(t => ({
-        id: t.canonical_name,
-        label: `${t.name.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())} (${t.server_name})`,
-      }));
-
-      setAvailableTools([...DEFAULT_TOOLS, ...agentMcpTools, ...skillNames]);
+      setAvailableTools([...DEFAULT_TOOLS, ...skillNames]);
     } finally {
       setLoading(false);
     }

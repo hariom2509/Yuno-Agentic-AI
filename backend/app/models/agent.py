@@ -1,7 +1,6 @@
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Float, Integer, JSON, String, Text
-from sqlalchemy.orm import relationship
 from app.db.database import Base
 
 
@@ -25,5 +24,3 @@ class Agent(Base):
     schedule_config = Column(JSON, default={})
     active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-
-    mcp_tools = relationship("AgentMCPTool", cascade="all, delete-orphan")

@@ -21,8 +21,6 @@ from app.models.workflow import Workflow
 from app.models.execution import Execution
 from app.models.message import Message
 from app.models.skill import Skill
-from app.models.mcp_server import MCPServer, MCPTool, AgentMCPTool
-from app.models.workflow_failure_policy import WorkflowFailurePolicy
 
 from app.routes.agent_routes import router as agent_router
 from app.routes.workflow_routes import router as workflow_router
@@ -31,8 +29,6 @@ from app.routes.message_routes import router as message_router
 from app.routes.monitoring_routes import router as monitoring_router
 from app.routes.template_routes import router as template_router
 from app.routes.skill_routes import router as skill_router
-from app.routes.mcp_routes import router as mcp_router
-from app.routes.capability_routes import router as capability_router
 
 from app.websocket.manager import manager
 
@@ -40,16 +36,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger(__name__)
 
 
-from app.db.migrations.add_capability_fields import run_migrations
-
-
 def wait_for_db():
     retries = 15
     while retries > 0:
         try:
             Base.metadata.create_all(bind=engine)
-            run_migrations()
-            logger.info("Database connected, tables created, and migrations applied.")
+            logger.info("Database connected and tables created.")
             return
         except OperationalError:
             retries -= 1
@@ -81,9 +73,6 @@ app.include_router(message_router)
 app.include_router(monitoring_router)
 app.include_router(template_router)
 app.include_router(skill_router)
-app.include_router(mcp_router)
-app.include_router(capability_router)
-
 
 
 @app.websocket("/ws/executions")
