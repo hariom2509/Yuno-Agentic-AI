@@ -3,6 +3,7 @@ from datetime import datetime
 
 def generate_report(data: str) -> str:
     """Wraps analysis output into a structured markdown report."""
+    data_str = str(data or "")
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
     return f"""# AI Analysis Report
@@ -12,13 +13,13 @@ def generate_report(data: str) -> str:
 
 ## Executive Summary
 
-{data[:500]}{'...' if len(data) > 500 else ''}
+{data_str[:500]}{'...' if len(data_str) > 500 else ''}
 
 ---
 
 ## Detailed Analysis
 
-{data}
+{data_str}
 
 ---
 

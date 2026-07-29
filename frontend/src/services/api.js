@@ -13,7 +13,7 @@ const getBaseURL = () => {
   if (port && port !== "3000" && port !== "3001") {
     return "";
   }
-  return `${protocol}//${hostname}:8001`;
+  return `${protocol}//${hostname}:8000`;
 };
 
 const api = axios.create({

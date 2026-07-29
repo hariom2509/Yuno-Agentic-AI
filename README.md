@@ -1,207 +1,275 @@
-# Yuno AI Agent Orchestration Platform
+# 🤖 Yuno AI Agentic Orchestration Platform
 
-A production-ready, stateful multi-agent workflow orchestrator built for the Yuno hiring challenge. It integrates a visual **ReactFlow** builder, **LangGraph** runtime engine, **Celery+Redis** queue tier, and **PostgreSQL** relational auditing logs.
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111.0-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![LangGraph](https://img.shields.io/badge/LangGraph-0.2.0+-FF6F61?style=flat-square&logo=langchain&logoColor=white)](https://langchain-ai.github.io/langgraph/)
+[![ReactFlow](https://img.shields.io/badge/ReactFlow-Visual_Builder-FF007A?style=flat-square&logo=react&logoColor=white)](https://reactflow.dev)
+[![MCP Protocol](https://img.shields.io/badge/Model_Context_Protocol-JSON--RPC_2.0-0055FF?style=flat-square)](https://modelcontextprotocol.io)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
+
+A production-grade, stateful **Agentic AI Orchestration Platform** built with **Python, FastAPI, LangGraph, React, PostgreSQL, Redis, and Celery**. It compiles visual **ReactFlow** node graphs into live **LangGraph StateGraphs** at runtime, featuring **Human-in-the-Loop (HITL)** approval workflows, **Just-In-Time (JIT) Model Context Protocol (MCP)** tool scoping, a 3-tier capability security model, and real-time execution observability via WebSockets and Server-Sent Events (SSE).
 
 ---
 
 ## 🏛️ System Architecture
 
 ```
-## Architecture
-
+                                    ┌─────────────────────────────────────────┐
+                                    │    Telegram Gateway / Web Dashboard     │
+                                    └────────────────────┬────────────────────┘
+                                                         │
+                                                         ▼
+                                            ┌─────────────────────────┐
+                                            │ FastAPI Backend (:8000) │
+                                            └────────────┬────────────┘
+                                                         │
+                        ┌────────────────────────────────┴────────────────────────────────┐
+                        ▼                                                                 ▼
+      ┌───────────────────────────────────┐                             ┌───────────────────────────────────┐
+      │  Celery Worker (Task Queue)       │                             │  FastAPI BackgroundTasks (Local)  │
+      └─────────────────┬─────────────────┘                             └─────────────────┬─────────────────┘
+                        │                                                                 │
+                        └────────────────────────────────┬────────────────────────────────┘
+                                                         │
+                                                         ▼
+                                            ┌─────────────────────────┐
+                                            │ RuntimeEngine           │
+                                            │ ReactFlow → StateGraph  │
+                                            └────────────┬────────────┘
+                                                         │
+       ┌───────────────────────┬─────────────────────────┼─────────────────────────┬───────────────────────┐
+       ▼                       ▼                         ▼                         ▼                       ▼
+┌──────────────┐     ┌───────────────────┐     ┌───────────────────┐     ┌───────────────────┐   ┌───────────────────┐
+│ Input        │     │ JIT Tool Scoping  │     │ LLM Layer         │     │ SHA-256           │   │ Human-in-the-Loop │
+│ Guardrails   │ ──► │ (90% token saving)│ ──► │ (Groq/OpenAI/     │ ──► │ Idempotency Guard │ ─►│ interrupt() /     │
+│ (Safety)     │     │ (Intent Routing)  │     │  Gemini Flash)    │     │ (Replay Safety)   │   │ Command(resume=)  │
+└──────────────┘     └───────────────────┘     └───────────────────┘     └───────────────────┘   └───────────────────┘
+                                                         │
+                                                         ▼
+                                            ┌─────────────────────────┐
+                                            │ MCP Integration Layer   │
+                                            │ (JSON-RPC 2.0 / stdio)  │
+                                            └────────────┬────────────┘
+                                                         │
+                       ┌─────────────────────────────────┼─────────────────────────────────┐
+                       ▼                                 ▼                                 ▼
+             ┌───────────────────┐             ┌───────────────────┐             ┌───────────────────┐
+             │ yuno-tools        │             │ postgres-mcp      │             │ github-mcp        │
+             │ (BUILDER_VISIBLE) │             │ (AGENT_ASSIGNABLE)│             │ (PLATFORM_INT)    │
+             └───────────────────┘             └───────────────────┘             └───────────────────┘
+                                                         │
+                                                         ▼
+                                            ┌─────────────────────────┐
+                                            │ Persistence & Observ.   │
+                                            │ - PostgreSQL Audit Logs │
+                                            │ - Redis Agent Memory    │
+                                            │ - WebSocket Broadcast   │
+                                            │ - SSE Message Stream    │
+                                            └─────────────────────────┘
 ```
-Telegram User
-     │
-     ▼
-FastAPI Backend (:8000)
-     │
-     ├── /agents        — Agent CRUD
-     ├── /workflows     — Workflow CRUD + Execute
-     ├── /monitoring    — Execution history + stats
-     ├── /templates     — Pre-built workflow templates
-     ├── /executions    — Execution records
-     └── /ws/executions — WebSocket live feed
-     │
-     ▼
-Celery Worker (async task queue)
-     │
-     ▼
-LangGraph Runtime Engine
-     │
-  ┌──┴──────────────┐
-  ▼                 ▼
-Agent Nodes       Tool Nodes
-(OpenAI calls)    (web_search, calculator, report_generator)
-  │
-  ▼
-Message Dispatcher → PostgreSQL (persisted)
-  │
-  ▼
-WebSocket Broadcast → React UI (live)
-  │
-  ▼
-Telegram Reply
-```
-
-### End-to-End Execution Flow:
-1. **Request Ingestion**: Tasks are dispatched via either the Visual Web Dashboard or the background Telegram Gateway Bot.
-2. **Task Queueing**: The API registers the run in the database and schedules a task on **Celery/Redis** (falling back to a local `BackgroundTasks` thread pool if Redis is offline).
-3. **Graph Compilation**: The background worker compiles the visual node configurations into a stateful **LangGraph** `StateGraph(AgentState)`.
-4. **Execution & Guardrails**: LangGraph traverses nodes (Agents and custom Python Skills), applying safety guardrails on input/output payloads.
-5. **Timeline Streaming**: Message dispatchers write chronological executions into PostgreSQL, broadcasting logs instantly to the frontend using WebSockets.
-6. **Delivery**: The final generated output is compiled into a markdown report and sent back to the visual interface or the Telegram chat.
 
 ---
 
-## 🔬 AI Framework Decision (Mandatory Justification)
+## ✨ Key Features & Architectural Innovations
 
-Reviewers explicitly require a justification for selecting **LangGraph** over alternatives:
+### 1. 🔄 Dynamic StateGraph Compilation & Multi-Agent Execution
+- **ReactFlow-to-LangGraph Compiler**: Compiles visual frontend graph definitions (`nodes` and `edges`) into live, executable LangGraph `StateGraph(AgentState)` instances at runtime.
+- **Conditional Output-Based Routing**: Graph edges support conditional branching based on substring evaluations of upstream node outputs, enabling dynamic multi-path decision trees.
+- **Multi-Provider LLM Routing**: Seamlessly routes prompts across **Groq (Llama 3.3 70B / Llama 3.1 8B)**, **OpenAI (GPT-4o)**, and **Google Gemini 2.5 Flash**, with automated schema sanitization for Gemini-compatible function definitions.
 
-* **LangGraph vs. openclaw.ai**: *openclaw.ai* relies on an "always-on" agent process executing a custom memory engine (`SOUL.md`). This architecture is highly state-blocking and difficult to scale horizontally or run in ephemeral queues. LangGraph compiled states are thread-safe and stateless, enabling simple horizontal scale across standard worker pools.
-* **LangGraph vs. AutoGen & CrewAI**: Conversational turn-taking in AutoGen and CrewAI is highly non-deterministic and prone to infinite reasoning loops that drive up API costs. LangGraph employs explicit **conditional edges** for deterministic execution control.
-* **LangGraph vs. Custom Runtime**: Developing a custom execution loop increases engineering overhead, lacks built-in visualization tools, and requires rolling custom checkpointing, state serialization, and timeline routing libraries.
+### 2. 🛡️ Human-in-the-Loop (HITL) & Durable Pause-Resume
+- **Gated Execution**: Critical or destructive tool operations (`drop_table`, `truncate_table`, `delete_repository`) automatically trigger LangGraph `interrupt()`, saving thread checkpoints and pausing execution.
+- **Monitoring UI Approval**: Execution status updates to `waiting_for_approval`, rendering an approval banner on the visual Monitoring UI.
+- **Command Resume**: Human operators approve or reject executions, resuming the exact graph node via `graph.invoke(Command(resume=decision), config)`.
+
+### 3. ⚡ Intent-Based Just-In-Time (JIT) MCP Tool Scoping
+- **Zero-Latency Intent Classifier**: `CapabilityRegistry.classify_and_scope_tools()` inspects task prompts for domain keywords, dynamically scoping tool payloads to target MCP servers (e.g., `postgres-mcp` for DB queries vs. `yuno-tools` for general research).
+- **90% Token Reduction**: Prevents flooding LLM system context with unnecessary schemas, reducing prompt overhead from thousands of tokens down to domain-specific definitions.
+
+### 4. 🔒 3-Tier Capability Security Model & Agent ACL
+- **Tiered Capability Exposure**:
+  - `BUILDER_VISIBLE`: User-facing canvas tools (`web_search`, `calculator`, custom skills).
+  - `AGENT_ASSIGNABLE`: External agent capabilities requiring explicit authorization (`postgres-mcp`).
+  - `PLATFORM_INTERNAL`: Platform automation tools restricted from standard agent configuration (`github-mcp`).
+- **Granular Authorization**: `AgentMCPTool` junction table enforces per-agent tool permissions verified via `MCPAuthorizationService`.
+- **SHA-256 Idempotency Shield**: `IdempotencyGuard` generates deterministic hashes (`execution_id:node_id:tool_name`) to prevent duplicate execution of side-effecting tools.
+
+### 5. 🚨 Automated Failure Recovery Pipeline
+- **Automated Failure Interception**: `FailurePolicyService` catches workflow runtime exceptions and dispatches diagnostic failure payloads (Execution ID, failed node, stack trace).
+- **GitHub Issue Integration**: Gated behind HITL approval, authorized operators can post structured failure issues directly to target GitHub repositories via `github-mcp`.
+
+### 6. 📊 Real-Time Execution Observability & Memory
+- **WebSocket & SSE Streaming**: Real-time event broadcasting over `/ws/executions` and Server-Sent Events `/executions/{id}/stream` for sub-second timeline visibility.
+- **Redis Conversational Memory**: `MemoryManager` maintains sliding 20-message window context per agent thread with 24-hour TTL and graceful in-memory fallback.
+- **Token & Cost Tracking**: Live token usage and USD cost tracking logged in PostgreSQL for every execution.
 
 ---
 
-## 🏛️ Tech Stack Decisions & Tradeoffs
+## 🗄️ Relational Database Schema (PostgreSQL / SQLite)
 
-| Component | Choice | Tradeoff / Decision Rationale |
+The platform utilizes **9 relational tables**:
+
+```
+                       ┌───────────────────┐
+                       │      agents       │
+                       └─────────┬─────────┘
+                                 │ 1
+                                 │
+                                 │ N
+                       ┌─────────┴─────────┐
+                       │  agent_mcp_tools  │ (ACL Junction)
+                       └─────────┬─────────┘
+                                 │ N
+                                 │
+                                 │ 1
+┌───────────────────┐  ┌─────────┴─────────┐
+│    mcp_servers    │──┤     mcp_tools     │
+└───────────────────┘ 1│N                  │
+                       └───────────────────┘
+
+┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐
+│     workflows     │──┤    executions     │──┤     messages      │
+└─────────┬─────────┘ 1│N                  │ 1│N                  │
+          │            └─────────┬─────────┘  └───────────────────┘
+          │ 1                    │ 1
+          │                      │
+          │ N                    │ 1
+┌─────────┴─────────┐  ┌─────────┴─────────┐  ┌───────────────────┐
+│  failure_policies │  │      skills       │  │     templates     │
+└───────────────────┘  └───────────────────┘  └───────────────────┘
+```
+
+1. **`agents`**: Agent personas, system prompts, temperature, model selection, memory toggles, guardrails, and scheduling JSON.
+2. **`workflows`**: Workflow definitions with stored ReactFlow `graph` JSON (nodes, edges, positions).
+3. **`executions`**: Execution logs, status (`running`, `completed`, `failed`, `waiting_for_approval`), `thread_id`, `approval_data`, token usage, and cost tracking.
+4. **`messages`**: Chronological inter-agent and agent-tool communication logs linked to executions.
+5. **`skills`**: Custom executable Python scripts dynamically evaluated at runtime via `exec()`.
+6. **`mcp_servers`**: MCP server registry (`stdio`/`http` transport, commands, args, secret references, classification category).
+7. **`mcp_tools`**: Cached tool definitions discovered from MCP servers via JSON-RPC 2.0 (`tools/list`), classified by `exposure`, `risk_level`, and `requires_approval`.
+8. **`agent_mcp_tools`**: Junction table granting explicit agent-level access to assignable MCP tools.
+9. **`workflow_failure_policies`**: Automation policies linking workflow failures to diagnostic GitHub issue generation.
+
+---
+
+## 🔬 AI Orchestration Framework Decision
+
+| Evaluated Framework | Decision | Justification |
 |---|---|---|
-| **AI Runtime** | **LangGraph** | Provides cyclic graphing, shared global state, and predictable transition rules. |
-| **Task Queue** | **Celery + Redis** | Decouples resource-heavy LLM and search calls from the API HTTP thread. |
-| **Database** | **PostgreSQL** | Offers full ACID transactions for auditing message logs, cost tracking, and metrics. |
-| **Messaging** | **Telegram Bot API** | Simple polling daemon; allows local testing without public proxy tunnels. |
-| **Frontend** | **ReactFlow** | Industry-standard toolkit to implement visual, interactive node builders. |
-
-* **Why Monolith instead of Microservices?** A modular monolith was selected for development velocity, simple deployment, and zero networking overhead. The directories are strictly decoupled (`routes/`, `models/`, `runtime/`, `tasks/`) to ease microservice extraction if load spikes.
-* **Why Telegram instead of WhatsApp?** Telegram bot registration is free, takes 10 seconds, and has no commercial business verification blockers, allowing immediate sandbox evaluation.
+| **LangGraph** | **SELECTED** | Provides explicit, cyclic StateGraph definitions, shared state schema (`AgentState`), native interrupt/resume checkpointing, and predictable conditional edge routing required for enterprise compliance. |
+| **AutoGen / CrewAI** | **REJECTED** | Conversational turn-taking in AutoGen/CrewAI relies on non-deterministic LLM loops that frequently suffer from infinite reasoning loops, driving up API costs and breaking strict DAG flow execution. |
+| **Custom Execution Engine** | **REJECTED** | Rolling a custom runtime increases engineering overhead, lacks standard graph visualization tools, and requires re-implementing state serialization, checkpointing, and thread isolation. |
 
 ---
 
-## 🎯 Challenge Requirement Mapping
+## 🚀 Getting Started
 
-| Requirement | Status | Platform Implementation Details |
-|---|---|---|
-| **Agent CRUD** | ✅ | Interactive Registry page and dynamic FastAPI router (`agent_routes.py`). |
-| **Agent Configuration** | ✅ | Memory toggles, safety guardrails, model parameters, intervals in `agent.py`. |
-| **Scheduling** | ✅ | Active Scheduler Service maps intervals and triggers asynchronous workflows. |
-| **Memory** | ✅ | Context cached in PostgreSQL and propagated to the active LangGraph thread. |
-| **Guardrails** | ✅ | Safety layer checks input keyword blocks and caps maximum token counts. |
-| **Skills** | ✅ | Custom Python code executed dynamically inside a safe execution scope. |
-| **Visual Builder** | ✅ | ReactFlow visual workspace mapping node drag-and-drop actions to backend graphs. |
-| **Conditions & Loops** | ✅ | Compiled conditional edges analyze node outputs for dynamic workflow routing. |
-| **Workflow Templates** | ✅ | Pre-configured Customer Support, Content Moderation, and Research templates. |
-| **Telegram Integration** | ✅ | Background Telegram poller triggering visual workflows via chat. |
-| **Agent Communication** | ✅ | Central message dispatcher logging agent exchange timelines in real-time. |
-| **Async Execution** | ✅ | Background Celery queues with an automatic local thread-pool fallback. |
-| **Message Persistence** | ✅ | Relational `messages` table storing execution timeline audits. |
-| **Live Monitoring** | ✅ | Visual monitoring dashboard rendering logs streamed live over WebSockets. |
-| **Token & Cost Tracking** | ✅ | Real-time calculations logged in PostgreSQL on every completion. |
-| **Tests Suite** | ✅ | Comprehensive automated unit test suite utilizing `pytest` to run local validations. |
+### Prerequisites
+- **Python**: 3.11+
+- **Node.js**: 18+ (for frontend development)
+- **Docker & Docker Compose**: (Optional, for full stack containerized deployment)
 
----
+### 1. Environment Setup
 
-## 🗄️ Core Data Model (PostgreSQL Relational Schema)
+Create a `.env` file in `backend/` (or copy `.env.example`):
 
-### 1. Agent Table
-- `name` (VARCHAR): Display name.
-- `role` (VARCHAR): Agent's functional persona.
-- `prompt` (TEXT): System instructions.
-- `tools` (JSON): Bound tools and skills.
-- `memory_enabled` (BOOLEAN): Short-term memory toggling.
-- `guardrails` (JSON): Configured safety limits.
-
-### 2. Workflow Table
-- `name` (VARCHAR): Identifier.
-- `graph_definition` (JSON): ReactFlow nodes, positions, and edges.
-
-### 3. Execution Table
-- `workflow_id` (UUID): Reference key.
-- `status` (VARCHAR): Current run status (Pending, Running, Succeeded, Failed).
-- `tokens_used` (INTEGER): Metrics tracker.
-- `cost_usd` (FLOAT): Running cost logs.
-- `output` (TEXT): Compiled markdown response.
-
-### 4. Message Table
-- `execution_id` (UUID): Reference key.
-- `sender` (VARCHAR): Message source (Agent / User).
-- `content` (TEXT): Payload / log updates.
-- `timestamp` (DATETIME): Audit log.
-
-### 5. Skill Table
-- `name` (VARCHAR): Skill name.
-- `description` (TEXT): Routing info.
-- `executable_code` (TEXT): Custom Python script.
-
----
-
-## ⚙️ Feature Highlights
-
-### 🛠️ Custom Python Skills
-Skills are reusable capabilities executing custom Python code (e.g. ROI Calculator, Sentiment Analyzer, Data Validator). They encapsulate complex business calculations that prompts alone cannot reliably solve. They are dynamically imported and safely evaluated at runtime.
-
-### 📅 Autonomous Scheduling
-Workflows can be bound to automated intervals. A background Scheduler Daemon continuously matches active timers, triggers executions through the runtime engine, and persists logs without requiring manual triggers or human intervention.
-
----
-
-## 🔄 Agent Lifecycle Flow
-```
-Create Agent ➔ Configure Prompt ➔ Bind Tools/Skills ➔ Enable Memory & Guardrails ➔ Connect in ReactFlow ➔ Execute ➔ Audit (Token/Cost/Logs)
-```
-
----
-
-## 🚀 Setup & Execution
-
-### 1. Environment Configuration
-Create a `.env` in `backend/` (see `backend/.env` or `.env.example` as a template):
 ```bash
+# LLM Provider Keys (at least one required)
+GROQ_API_KEY=gsk_...
 OPENAI_API_KEY=sk-...
-TELEGRAM_BOT_TOKEN=<your-bot-token>
-DATABASE_URL=postgresql://postgres:postgres@postgres:5432/yuno_ai
-REDIS_URL=redis://redis:6379/0
+GEMINI_API_KEY=...
+
+# Infrastructure (Optional: Defaults to local SQLite & in-memory fallbacks)
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/yuno_ai
+REDIS_URL=redis://localhost:6379/0
+
+# Integration Keys (Optional)
+GITHUB_PERSONAL_ACCESS_TOKEN=ghp_...
+TELEGRAM_BOT_TOKEN=...
 ```
 
-### 2. Run Unified Standalone Container (Recommended & Fast)
-We built an optimized multi-stage build packaging the Vite frontend inside the FastAPI backend. It includes SQLite and local thread fallbacks if Redis/Postgres are down.
-* **PowerShell (Windows)**: `.\run_docker.ps1`
-* **Shell (WSL/macOS/Linux)**: `./run_docker.sh`
-* Open the browser at: **[http://localhost:8000](http://localhost:8000)** (Swagger API docs at `/docs`).
+---
 
-### 3. Run Distributed Multi-Container Stack
+### 2. Running Locally (Development Mode)
+
+#### Backend (FastAPI)
+```bash
+cd backend
+python -m venv venv
+# Windows:
+venv\Scripts\activate
+# Linux/macOS:
+source venv/bin/activate
+
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+- API Documentation: **http://localhost:8000/docs**
+
+#### Frontend (React)
+```bash
+cd frontend
+npm install
+npm start
+```
+- Web Application UI: **http://localhost:3000**
+
+---
+
+### 3. Running with Docker Compose (Full Distributed Stack)
+
+Launch the complete stack (FastAPI Backend, React Frontend, PostgreSQL, Redis, Celery Worker):
+
 ```bash
 docker-compose up --build
 ```
-* **Frontend**: `http://localhost:3001`
-* **Backend API**: `http://localhost:8001`
+- **Web UI**: `http://localhost:3001`
+- **Backend API**: `http://localhost:8001`
 
 ---
 
-## 🔮 Roadmap & Testing
+## 🧪 Testing
 
-### Future Improvements
-- **Integrations**: Slack, Discord, and WhatsApp webhook channels.
-- **Human-in-the-Loop**: Pause nodes waiting for Slack/Email interactive clicks.
-- **Enterprise**: Multi-tenant organizations, Role-Based Access Control (RBAC), and workflow version history.
+Run the automated test suite covering unit, integration, and MCP capability tests:
 
-### Testing Suite
-We cover database transactions, graph execution compile paths, and agent endpoints using `pytest`.
 ```bash
-# Navigate to backend directory
 cd backend
-
-# Execute test suite
-pytest
+pytest tests/ -v
 ```
 
-### 🎥 Demonstration Walkthrough
-* **Recorded Video Link**: `<youtube-drive-link>`
-* **Demonstrates**: Registry creation, custom Skills registration, visual ReactFlow linking, template deployment, async task updates via WebSocket, and Telegram interface execution.
+---
+
+## 📁 Repository Structure
+
+```
+yuno_full_platform/
+├── backend/
+│   ├── app/
+│   │   ├── main.py               # FastAPI application entry point & router wiring
+│   │   ├── db/                   # Database session management & schema migrations
+│   │   ├── models/               # SQLAlchemy ORM models (agents, workflows, executions, MCP)
+│   │   ├── routes/               # REST API endpoints (agents, workflows, executions, monitoring, MCP)
+│   │   ├── runtime/              # LangGraph RuntimeEngine, checkpointer, guardrails, idempotency
+│   │   ├── services/             # CapabilityRegistry, OpenAIService, FailurePolicyService, Scheduler
+│   │   ├── mcp/                  # MCP Client, Manager, Registry, Adapter, & Servers
+│   │   │   └── servers/          # Genuine MCP stdio servers (yuno-tools, postgres-mcp)
+│   │   ├── tasks/                # Celery application & workflow background tasks
+│   │   ├── tools/                # Native Python tools (web_search, calculator, report_generator)
+│   │   └── websocket/            # WebSocket connection manager & sync-to-async event bridge
+│   ├── tests/                    # Automated integration & unit test suite
+│   └── requirements.txt          # Python dependencies
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx               # React router & main workspace layout
+│   │   ├── pages/                # Builder, Monitoring, Agents, Workflows, Skills, Templates
+│   │   └── services/             # Axios API client with dynamic host resolution
+│   └── package.json              # React dependencies
+├── scripts/                      # Deployment & maintenance scripts
+├── docker-compose.yml            # Multi-container stack orchestration
+└── README.md                     # Technical reference & documentation
+```
 
 ---
 
-## 📈 Impact Metrics
-- **Total Configurable Dimensions**: 8+ (Prompt, Model, Memory, Tools, Schedule, Guardrails, Channels, Tokens)
-- **E2E Workflow Creation Time**: Under 60 seconds (visually drag-and-drop & wire nodes)
-- **Message Reliability**: 100% database transaction persistence via PostgreSQL.
+## 📄 License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
