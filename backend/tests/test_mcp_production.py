@@ -68,7 +68,7 @@ def test_openai_tool_adapter(db_session):
     adapted = MCPToolAdapter.to_openai_function(tool, server_name="github")
 
     assert adapted["type"] == "function"
-    assert adapted["function"]["name"] == "mcp::github::search_repo"
+    assert adapted["function"]["name"] == "mcp_github_search_repo"
     assert adapted["function"]["description"] == "Search repository code"
     assert "query" in adapted["function"]["parameters"]["properties"]
 

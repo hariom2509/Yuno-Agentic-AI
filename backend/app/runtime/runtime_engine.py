@@ -264,6 +264,10 @@ class RuntimeEngine:
 
                     else:
                         # --- Agent node: Redis memory + Groq-routed LLM ---
+                        from app.models.agent import Agent
+                        agent_row = db.query(Agent).filter(Agent.name == nlabel).first()
+                        agent_id = agent_row.id if agent_row else None
+
                         sys_prompt = ndata.get(
                             "system_prompt",
                             f"You are {nlabel}. Complete the given task thoughtfully."
@@ -322,10 +326,10 @@ class RuntimeEngine:
                                     if human_decision != "APPROVED":
                                         output = f"[HITL Rejected] Human denied execution of '{canonical_tool}'."
                                     else:
-                                        tool_res = ToolExecutor.execute(canonical_tool, args_dict, db=db)
+                                        tool_res = ToolExecutor.execute(canonical_tool, args_dict, db=db, agent_id=agent_id)
                                         output = f"Executed '{canonical_tool}' ({scoped_info['category']} mode after approval):\n{tool_res}"
                                 else:
-                                    tool_res = ToolExecutor.execute(canonical_tool, args_dict, db=db)
+                                    tool_res = ToolExecutor.execute(canonical_tool, args_dict, db=db, agent_id=agent_id)
                                     output = f"Executed '{canonical_tool}' ({scoped_info['category']} mode):\n{tool_res}"
 
                         token_counter["tokens"] += result["total_tokens"]

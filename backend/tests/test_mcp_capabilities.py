@@ -47,12 +47,42 @@ def test_database_agent_mcp():
             db.add(agent)
             db.commit()
 
-        # 2. Authorize execute_select tool for Agent #1
-        tool = db.query(MCPTool).filter(MCPTool.name == "execute_select").first()
-        if tool:
-            db.query(AgentMCPTool).filter(AgentMCPTool.agent_id == agent.id, AgentMCPTool.mcp_tool_id == tool.id).delete()
-            db.add(AgentMCPTool(agent_id=agent.id, mcp_tool_id=tool.id, enabled=True))
+        # Ensure postgres-mcp server exists in the DB
+        server = db.query(MCPServer).filter(MCPServer.name == "postgres-mcp").first()
+        if not server:
+            server = MCPServer(
+                name="postgres-mcp",
+                description="PostgreSQL Database Server",
+                transport="stdio",
+                command="python",
+                args=["postgres_mcp_server.py"],
+                category="EXTERNAL_AGENT",
+                enabled=True
+            )
+            db.add(server)
             db.commit()
+            db.refresh(server)
+
+        # Ensure execute_select tool exists and is enabled
+        tool = db.query(MCPTool).filter(MCPTool.name == "execute_select", MCPTool.server_id == server.id).first()
+        if not tool:
+            tool = MCPTool(
+                server_id=server.id,
+                name="execute_select",
+                description="Execute a SELECT SQL query",
+                exposure="AGENT_ASSIGNABLE",
+                risk_level="LOW",
+                requires_approval=False,
+                enabled=True
+            )
+            db.add(tool)
+            db.commit()
+            db.refresh(tool)
+
+        # 2. Authorize execute_select tool for Agent #1
+        db.query(AgentMCPTool).filter(AgentMCPTool.agent_id == agent.id, AgentMCPTool.mcp_tool_id == tool.id).delete()
+        db.add(AgentMCPTool(agent_id=agent.id, mcp_tool_id=tool.id, enabled=True))
+        db.commit()
 
         print(f"Authorized Agent #{agent.id} for 'mcp::postgres-mcp::execute_select'.")
 
@@ -81,6 +111,38 @@ def test_failure_policy_github_mcp():
 
     db = SessionLocal()
     try:
+        # Ensure github-mcp server exists in the DB
+        server = db.query(MCPServer).filter(MCPServer.name == "github-mcp").first()
+        if not server:
+            server = MCPServer(
+                name="github-mcp",
+                description="GitHub MCP Server",
+                transport="stdio",
+                command="docker",
+                args=["run", "-i", "--rm", "ghcr.io/github/github-mcp-server"],
+                category="PLATFORM_INTEGRATION",
+                enabled=True
+            )
+            db.add(server)
+            db.commit()
+            db.refresh(server)
+
+        # Ensure create_issue tool exists and is enabled
+        tool = db.query(MCPTool).filter(MCPTool.name == "create_issue", MCPTool.server_id == server.id).first()
+        if not tool:
+            tool = MCPTool(
+                server_id=server.id,
+                name="create_issue",
+                description="Creates a GitHub issue",
+                exposure="PLATFORM_INTERNAL",
+                risk_level="HIGH",
+                requires_approval=True,
+                enabled=True
+            )
+            db.add(tool)
+            db.commit()
+            db.refresh(tool)
+
         # 1. Create a simulated failed execution
         execution = Execution(
             workflow_id=1,
@@ -107,13 +169,9 @@ def test_failure_policy_github_mcp():
 
         print(f"Execution #{execution.id} correctly paused for operator approval on GitHub issue creation.")
 
-        # 3. Simulate Human Operator approving via API endpoint /executions/{id}/resume
-        resume_url = f"http://localhost:8000/executions/{execution.id}/resume"
-        payload = json.dumps({"decision": "APPROVED"}).encode("utf-8")
-        req = urllib.request.Request(resume_url, data=payload, headers={"Content-Type": "application/json"})
-        
-        with urllib.request.urlopen(req) as resp:
-            resume_data = json.loads(resp.read().decode("utf-8"))
+        # 3. Simulate Human Operator approving via direct endpoint function call
+        from app.routes.execution_routes import resume_execution
+        resume_data = resume_execution(execution_id=execution.id, body={"decision": "APPROVED"}, db=db)
 
         print("Resume Response:")
         print(json.dumps(resume_data, indent=2))
