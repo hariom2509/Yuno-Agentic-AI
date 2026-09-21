@@ -7,7 +7,7 @@
 [![MCP Protocol](https://img.shields.io/badge/Model_Context_Protocol-JSON--RPC_2.0-0055FF?style=flat-square)](https://modelcontextprotocol.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 
-A **production-grade, stateful multi-agent AI orchestration platform** built with Python, FastAPI, LangGraph, React, PostgreSQL, Redis, and Celery. Designed for enterprise deployments, it compiles visual **ReactFlow** node graphs into live **LangGraph StateGraphs** at runtime — featuring **Human-in-the-Loop (HITL)** approval workflows, **Just-In-Time (JIT) MCP tool scoping** for ~90% token reduction, a 3-tier capability security model with per-agent ACL enforcement, SHA-256 idempotency protection, and real-time execution observability via WebSockets.
+A **production-grade, stateful multi-agent AI orchestration platform** built with Python, FastAPI, LangGraph, React, PostgreSQL, Redis, and Celery. Designed for enterprise deployments, it compiles visual **ReactFlow** node graphs into live **LangGraph StateGraphs** at runtime — featuring **Human-in-the-Loop (HITL)** approval workflows, **Just-In-Time (JIT) MCP tool scoping** for ~90% token reduction, a 3-tier capability security model with per-agent ACL enforcement, SHA-256 idempotency protection, and real-time execution observability via WebSockets and SSE.
 
 ---
 
@@ -15,73 +15,215 @@ A **production-grade, stateful multi-agent AI orchestration platform** built wit
 
 | Feature | Description |
 |---|---|
-| **Visual Workflow Builder** | Drag-and-drop ReactFlow canvas that compiles directly into executable LangGraph `StateGraph` instances |
-| **Multi-Agent Execution** | Sequential and conditional-branching multi-agent pipelines with per-node LLM & tool assignment |
-| **Human-in-the-Loop (HITL)** | LangGraph `interrupt()` pauses execution on destructive operations; operators approve/reject via Monitoring UI |
-| **JIT MCP Tool Scoping** | `CapabilityRegistry` inspects task prompts and dynamically scopes tool payloads — ~90% token reduction |
-| **3-Tier Capability Security** | `BUILDER_VISIBLE` / `AGENT_ASSIGNABLE` / `PLATFORM_INTERNAL` exposure tiers enforced across all MCP tools |
-| **SHA-256 Idempotency Guard** | Prevents duplicate execution of side-effecting tools across Celery retries |
-| **Failure Recovery Pipeline** | Catches workflow failures and gates GitHub issue creation behind HITL approval |
+| **Dynamic StateGraph Compilation** | Parses ReactFlow node/edge JSON at runtime and compiles it into an executable LangGraph `StateGraph(AgentState)` with conditional branching |
+| **Multi-Agent Execution** | Sequential and conditional-branching multi-agent pipelines with per-node LLM model, tool, and system prompt assignment |
+| **Human-in-the-Loop (HITL)** | LangGraph `interrupt()` pauses execution on destructive operations; operators approve or reject via Monitoring UI; resumes via `Command(resume=)` |
+| **MCP Protocol Integration** | Full JSON-RPC 2.0 Model Context Protocol support over `stdio` and `http` transports — connects to any MCP-compliant tool server |
+| **JIT MCP Tool Scoping** | `CapabilityRegistry` dynamically scopes tool schemas per prompt intent, reducing LLM context overhead by ~90% |
+| **3-Tier Capability Security** | `BUILDER_VISIBLE` / `AGENT_ASSIGNABLE` / `PLATFORM_INTERNAL` exposure tiers with per-agent ACL enforcement via junction table |
+| **SHA-256 Idempotency Guard** | Deterministic hash (`execution_id:node_id:tool_name`) prevents duplicate side-effecting tool calls across Celery retries |
+| **Automated Failure Recovery** | Catches runtime exceptions, triggers GitHub issue creation via MCP, gated behind HITL approval |
 | **Redis Conversational Memory** | Sliding 20-message window context per agent thread with 24h TTL and in-memory fallback |
-| **Real-Time Observability** | WebSocket broadcast for sub-second live execution timeline in the Monitoring UI |
-| **Token & Cost Tracking** | Per-execution token usage and USD cost logged to PostgreSQL |
-| **Telegram Integration** | Agents can be triggered and respond directly via a Telegram bot |
-| **Scheduler** | Cron-based agent task scheduling via `SchedulerService` |
+| **Multi-Provider LLM Routing** | Unified OpenAI-compatible client routing across Groq (Llama 3.3 70B / 3.1 8B), OpenAI GPT-4o, and Google Gemini 2.5 Flash |
+| **Input/Output Guardrails** | Configurable per-agent safety rules: blocked topics, max output length, JSON format enforcement, token budget cap |
+| **Real-Time Observability** | WebSocket broadcast + SSE stream for sub-second live execution timeline, node transitions, and agent messages |
+| **Token & Cost Tracking** | Per-execution token usage and USD cost computed and persisted to PostgreSQL after every LLM call |
+| **Celery Distributed Task Queue** | Workflow executions offloaded to Celery workers backed by Redis broker for async, non-blocking operation |
+| **Agent Scheduler** | Cron-based agent task scheduling with configurable intervals via `SchedulerService` |
+| **Telegram Bot Gateway** | Agents receive and respond to messages via Telegram, with full execution context |
+| **Workflow Templates** | Pre-built templates (Research & Analysis, Customer Support, Code Review, Data Pipeline) deployable in one click |
+| **Custom Skills** | Python code snippets stored in DB, dynamically invoked as tools during agent execution |
 
 ---
 
 ## 🏛️ System Architecture
 
 ```
-┌─────────────────────────────────────┐
-│    Telegram Gateway / Web UI        │
-└──────────────────┬──────────────────┘
-                   │
-       ┌───────────▼───────────┐
-       │  FastAPI Backend :8000 │
-       └───────────┬───────────┘
-                   │
-     ┌─────────────┴─────────────┐
-     ▼                           ▼
-Celery Worker              FastAPI BackgroundTasks
-     └─────────────┬─────────────┘
-                   ▼
-          ┌─────────────────┐
-          │  RuntimeEngine  │
-          │ ReactFlow→Graph │
-          └────────┬────────┘
-     ┌─────────────┼──────────────┐
-     ▼             ▼              ▼
- Guardrails   JIT Scoping   LLM Layer
- (Safety)   (Token Savings) (Groq/OpenAI/Gemini)
-                   │
-          ┌────────▼────────┐
-          │  MCP Layer      │
-          │ JSON-RPC 2.0    │
-          └────────┬────────┘
-     ┌─────────────┼─────────────┐
-     ▼             ▼             ▼
-yuno-tools   postgres-mcp   github-mcp
-(BUILDER)    (AGENT)        (PLATFORM)
+                    ┌──────────────────────────────────┐
+                    │   Telegram Gateway / Web UI       │
+                    └─────────────────┬────────────────┘
+                                      │
+                          ┌───────────▼──────────┐
+                          │  FastAPI Backend :8000 │
+                          └───────────┬───────────┘
+                                      │
+                   ┌──────────────────┴──────────────────┐
+                   ▼                                      ▼
+          Celery Worker                      FastAPI BackgroundTasks
+          (Redis Broker)                     (Async Execution)
+                   └──────────────────┬──────────────────┘
+                                      ▼
+                           ┌─────────────────────┐
+                           │    RuntimeEngine     │
+                           │  ReactFlow → Graph   │
+                           │  LangGraph Compile   │
+                           └──────────┬──────────┘
+              ┌───────────────────────┼──────────────────────┐
+              ▼                       ▼                       ▼
+        Input Guardrails        JIT Tool Scoping        LLM Layer
+        (Safety Checks)        (90% Token Saving)   (Groq/OpenAI/Gemini)
+                                      │
+                           ┌──────────▼──────────┐
+                           │  SHA-256 Idempotency │
+                           │  Guard (Replay Safe) │
+                           └──────────┬──────────┘
+                                      │
+                           ┌──────────▼──────────┐
+                           │     MCP Layer        │
+                           │  JSON-RPC 2.0        │
+                           │  stdio / http        │
+                           └──────────┬──────────┘
+              ┌───────────────────────┼──────────────────────┐
+              ▼                       ▼                       ▼
+         yuno-tools            postgres-mcp             github-mcp
+         (BUILDER_VISIBLE)     (AGENT_ASSIGNABLE)       (PLATFORM_INTERNAL)
+                                      │
+                           ┌──────────▼──────────┐
+                           │  Persistence Layer   │
+                           │  PostgreSQL / SQLite │
+                           │  Redis Memory        │
+                           │  WebSocket Broadcast │
+                           └─────────────────────┘
+```
+
+---
+
+## 🧠 Agentic AI Architecture Deep Dive
+
+### 1. ReactFlow → LangGraph Compiler
+
+The `RuntimeEngine` parses the workflow's ReactFlow JSON (`nodes`, `edges`) at runtime and compiles it into a live `StateGraph(AgentState)`:
+
+- Each node becomes a typed graph node with its own LLM call, tool execution, and guardrail checks
+- Edges with `condition` fields generate **conditional branching** via `add_conditional_edges()` based on substring evaluation of upstream node output
+- The compiled graph is executed with a `thread_id`-isolated checkpointer for durable state
+
+### 2. Human-in-the-Loop (HITL) Pause & Resume
+
+```
+Agent calls destructive tool
+        │
+        ▼
+  interrupt(payload)           ← LangGraph saves checkpoint
+        │
+        ▼
+  execution.status = "waiting_for_approval"
+  execution.approval_data = {tool, node, message}
+        │
+        ▼
+  Monitoring UI shows approval banner
+        │
+  Human clicks APPROVE / REJECT
+        │
+        ▼
+  POST /executions/{id}/resume  { "decision": "APPROVED" }
+        │
+        ▼
+  graph.invoke(Command(resume="APPROVED"), config)
+        │
+        ▼
+  Execution continues from exact paused node
+```
+
+Hardcoded high-risk operations that always require approval: `drop_table`, `truncate_table`, `delete_repository`.
+
+### 3. Model Context Protocol (MCP) Integration
+
+Full JSON-RPC 2.0 MCP client supporting both `stdio` (subprocess) and `http` transports:
+
+- `tools/list` — discovers and caches tool schemas into the `mcp_tools` DB table
+- `tools/call` — executes tools with argument marshaling and result parsing
+- **MCPToolAdapter** converts MCP schemas to OpenAI function-calling format for LLM tool binding
+- **MCPAuthorizationService** enforces per-agent ACL: only tools explicitly granted via `agent_mcp_tools` junction table are callable
+
+### 4. JIT Tool Scoping (Intent-Based Token Reduction)
+
+Every agent invocation passes the task prompt through `CapabilityRegistry.classify_and_scope_tools()`:
+
+```
+Prompt: "List all tables in the database and show workflows"
+        │
+        ▼
+  Keyword match: {"table", "database"} → DATABASE intent
+        │
+        ▼
+  Load only postgres-mcp tool schemas  (~200 tokens)
+  vs. loading ALL tools                (~2000+ tokens)
+        │
+        ▼
+  ~90% token reduction per LLM call
+```
+
+### 5. SHA-256 Idempotency Guard
+
+Before any side-effecting MCP tool runs, `IdempotencyGuard` computes:
+```
+key = SHA-256(f"{execution_id}:{node_id}:{tool_name}")
+```
+If the key was already executed (stored in Redis/memory), the call is skipped and the cached result returned — preventing duplicate DB writes, GitHub issues, or API charges on Celery retries.
+
+### 6. Automated Failure Recovery Pipeline
+
+```
+Workflow execution raises exception
+        │
+        ▼
+FailurePolicyService checks workflow_failure_policies table
+        │
+        ▼
+Builds structured diagnostic payload:
+  - Execution ID, failed node, stack trace, input task
+        │
+        ▼
+Sets execution.status = "waiting_for_approval"
+        │
+        ▼
+Human approves → github-mcp::create_issue posts structured
+                 failure report to target repository
 ```
 
 ---
 
 ## 🗄️ Database Schema
 
-**8 relational tables** (PostgreSQL in production, SQLite for local dev):
+**9 relational tables** (PostgreSQL in production, SQLite for local dev):
 
 | Table | Purpose |
 |---|---|
-| `agents` | Agent personas, system prompts, temperature, model, memory, guardrails, scheduling |
+| `agents` | Agent personas, system prompts, temperature, model, memory toggle, guardrails config, scheduling |
 | `workflows` | Workflow definitions with stored ReactFlow graph JSON (nodes, edges, positions) |
-| `executions` | Execution logs, status, `thread_id`, `approval_data`, token usage, cost |
-| `messages` | Chronological inter-agent and tool communication logs |
-| `skills` | Custom Python scripts executed at runtime |
-| `mcp_servers` | MCP server registry (stdio/http transport, commands, args) |
-| `mcp_tools` | Tool definitions classified by `exposure`, `risk_level`, `requires_approval` |
-| `agent_mcp_tools` | Junction table for per-agent tool authorization (ACL) |
-| `workflow_failure_policies` | Maps workflow failures to automated GitHub issue creation |
+| `executions` | Execution logs with status, `thread_id`, `approval_data`, token usage, USD cost |
+| `messages` | Chronological inter-agent and tool communication logs per execution |
+| `skills` | Custom Python scripts stored as DB records and invoked as runtime tools |
+| `mcp_servers` | MCP server registry — transport type, command, args, enabled state |
+| `mcp_tools` | Cached tool definitions with `exposure`, `risk_level`, `requires_approval` classification |
+| `agent_mcp_tools` | Junction table granting per-agent tool authorization (ACL) |
+| `workflow_failure_policies` | Failure automation policies per workflow (action type, target repo, approval gate) |
+
+---
+
+## 🔒 3-Tier Capability Security Model
+
+All MCP tools are classified and enforced across three exposure tiers:
+
+| Tier | Visibility | Example Tools |
+|---|---|---|
+| `BUILDER_VISIBLE` | Workflow canvas & node configuration | `web_search`, `calculator`, `report_generator`, `file_reader` |
+| `AGENT_ASSIGNABLE` | Agents with explicit ACL grant only | `postgres-mcp::query_database`, `postgres-mcp::list_tables` |
+| `PLATFORM_INTERNAL` | Runtime automation only — never user-configurable | `github-mcp::create_issue`, `github-mcp::delete_repository` |
+
+All `PLATFORM_INTERNAL` calls and destructive `AGENT_ASSIGNABLE` operations (`drop_table`, `truncate_table`) are **always** gated behind `HITL interrupt()` regardless of node configuration.
+
+---
+
+## ⚡ JIT MCP Tool Scoping
+
+`CapabilityRegistry.classify_and_scope_tools()` routes task prompts to a single MCP server scope:
+
+- **Database keywords** (`sql`, `table`, `query`, `schema`, `select`, ...) → `postgres-mcp` only
+- **General tasks** → `yuno-tools` only
+
+Prevents flooding the LLM context with all registered tool schemas — reduces prompt token overhead by ~90% per invocation.
 
 ---
 
@@ -109,7 +251,7 @@ GROQ_API_KEY=
 OPENAI_API_KEY=
 GEMINI_API_KEY=
 
-# LLM Base URL — set to Groq to use Llama models (default)
+# LLM Base URL — set to Groq to use Llama 3 models (recommended free tier)
 OPENAI_BASE_URL=https://api.groq.com/openai/v1
 
 # Database — defaults to local SQLite if not set
@@ -152,7 +294,7 @@ npm start
 ```
 - UI: **http://localhost:3000**
 
-**Celery Worker** *(optional — enables background task execution)*:
+**Celery Worker** *(enables background task execution and distributed scheduling)*:
 ```bash
 cd backend
 celery -A app.tasks.celery_app:celery worker --loglevel=info --concurrency=2
@@ -162,7 +304,7 @@ celery -A app.tasks.celery_app:celery worker --loglevel=info --concurrency=2
 
 ### 3. Docker — Single Container *(Recommended for demos)*
 
-Builds the React frontend statically and serves everything from a single FastAPI container:
+Builds React frontend statically and serves everything from one FastAPI container:
 
 ```bash
 # Windows
@@ -197,32 +339,17 @@ cd backend
 pytest tests/ -v
 ```
 
-Covers agent CRUD, workflow execution, guardrails, MCP capability authorization, and the HITL approval flow — **18 tests, all passing**.
+**18 tests — all passing.** Coverage includes:
 
----
-
-## 🔒 3-Tier Capability Security
-
-All MCP tools are classified into one of three exposure tiers:
-
-| Tier | Who Sees It | Example Tools |
-|---|---|---|
-| `BUILDER_VISIBLE` | Workflow canvas users | `web_search`, `calculator`, `report_generator` |
-| `AGENT_ASSIGNABLE` | Explicitly authorized agents | `postgres-mcp` (query_database, list_tables) |
-| `PLATFORM_INTERNAL` | Platform runtime only | `github-mcp` (create_issue, delete_repository) |
-
-Destructive operations (`drop_table`, `truncate_table`, `delete_repository`) always trigger a `HITL interrupt()` requiring human approval before execution.
-
----
-
-## ⚡ JIT MCP Tool Scoping
-
-`CapabilityRegistry.classify_and_scope_tools()` inspects task prompts for domain keywords and scopes tool schemas to a single MCP server:
-
-- **Database keywords** (`sql`, `table`, `query`, ...) → scopes to `postgres-mcp` only
-- **General tasks** → scopes to `yuno-tools` only
-
-This prevents flooding the LLM context with irrelevant tool schemas, reducing token overhead by ~90%.
+- Agent CRUD operations
+- Workflow creation and template deployment
+- RuntimeEngine graph & default workflow execution
+- Guardrails input/output validation
+- Calculator safe AST evaluation
+- MCP server/tool registration and OpenAI adapter schema conversion
+- MCP authorization and command allowlist security
+- Tool executor MCP dispatch
+- HITL failure policy and GitHub MCP integration
 
 ---
 
@@ -232,39 +359,39 @@ This prevents flooding the LLM context with irrelevant tool schemas, reducing to
 yuno_full_platform/
 ├── Dockerfile                    # Unified multi-stage build (frontend + backend)
 ├── docker-compose.yml            # Full distributed stack
-├── run_docker.ps1 / .sh          # One-click single-container scripts
+├── run_docker.ps1 / .sh          # One-click single-container deploy scripts
 ├── .env.example                  # Environment variable template
 ├── backend/
 │   ├── app/
 │   │   ├── main.py               # FastAPI entry point, router wiring, startup/shutdown
 │   │   ├── db/
-│   │   │   ├── database.py       # SQLAlchemy engine, session, DB URL resolution
+│   │   │   ├── database.py       # SQLAlchemy engine, session, DB URL resolution with fallback
 │   │   │   └── migrations/       # Schema migration scripts
-│   │   ├── models/               # SQLAlchemy ORM models
-│   │   ├── schemas/              # Pydantic request/response DTOs
-│   │   ├── routes/               # REST API endpoints (agents, workflows, executions, MCP, monitoring)
+│   │   ├── models/               # SQLAlchemy ORM models (9 tables)
+│   │   ├── schemas/              # Pydantic v2 request/response DTOs
+│   │   ├── routes/               # REST API endpoints (agents, workflows, executions, MCP, skills, monitoring)
 │   │   ├── runtime/
-│   │   │   ├── runtime_engine.py # LangGraph StateGraph compiler & executor
-│   │   │   ├── checkpointer.py   # MemorySaver (dev) / PostgresSaver (prod — see comments)
-│   │   │   ├── guardrails.py     # Input/output safety validation
-│   │   │   ├── idempotency.py    # SHA-256 idempotency guard for MCP tools
-│   │   │   └── memory_manager.py # Redis-backed conversational memory
+│   │   │   ├── runtime_engine.py # LangGraph StateGraph compiler & multi-agent executor
+│   │   │   ├── checkpointer.py   # MemorySaver (dev) / PostgresSaver (prod)
+│   │   │   ├── guardrails.py     # Per-agent input/output safety validation
+│   │   │   ├── idempotency.py    # SHA-256 idempotency guard for side-effecting MCP tools
+│   │   │   └── memory_manager.py # Redis-backed sliding window conversational memory
 │   │   ├── services/
-│   │   │   ├── capability_registry.py    # 3-tier tool security & JIT scoping
-│   │   │   ├── openai_service.py         # Multi-provider LLM client (Groq/OpenAI/Gemini)
+│   │   │   ├── capability_registry.py    # 3-tier security model & JIT tool scoping
+│   │   │   ├── openai_service.py         # Multi-provider LLM client with cost tracking
 │   │   │   ├── failure_policy_service.py # Automated failure → GitHub issue pipeline
 │   │   │   └── scheduler_service.py      # Cron-based agent task scheduler
 │   │   ├── mcp/
-│   │   │   ├── client.py         # JSON-RPC 2.0 stdio/http client
-│   │   │   ├── manager.py        # MCP tool dispatch with auth enforcement
-│   │   │   ├── authorization.py  # Per-agent tool ACL verification
-│   │   │   ├── adapter.py        # MCP schema → OpenAI function calling adapter
+│   │   │   ├── client.py         # JSON-RPC 2.0 stdio/http MCP client
+│   │   │   ├── manager.py        # MCP tool dispatch with ACL enforcement
+│   │   │   ├── authorization.py  # Per-agent tool authorization verification
+│   │   │   ├── adapter.py        # MCP schema → OpenAI function calling format adapter
 │   │   │   └── servers/          # Native MCP stdio servers (yuno-tools, postgres-mcp)
-│   │   ├── tasks/                # Celery app & workflow background tasks
+│   │   ├── tasks/                # Celery app & workflow background task definitions
 │   │   ├── tools/                # Native Python tools (web_search, calculator, report_generator)
-│   │   ├── websocket/            # WebSocket connection manager & sync-to-async bridge
+│   │   ├── websocket/            # WebSocket connection manager & sync-to-async event bridge
 │   │   └── static/               # Compiled React build (served in single-container mode)
-│   ├── tests/                    # pytest integration & unit tests
+│   ├── tests/                    # pytest integration & unit tests (18 tests)
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
@@ -275,16 +402,6 @@ yuno_full_platform/
 │   └── package.json
 └── scripts/                      # Dev helper scripts
 ```
-
----
-
-## 🔬 Framework Decision
-
-| Framework | Decision | Reason |
-|---|---|---|
-| **LangGraph** | ✅ Selected | Explicit cyclic `StateGraph`, shared `AgentState`, native `interrupt()`/`Command(resume=)` checkpointing, deterministic conditional edge routing |
-| **AutoGen / CrewAI** | ❌ Rejected | Non-deterministic conversational loops cause infinite reasoning cycles and uncontrolled API cost |
-| **Custom Engine** | ❌ Rejected | High engineering overhead; requires re-implementing checkpointing, state serialization, and thread isolation from scratch |
 
 ---
 
