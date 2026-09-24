@@ -50,7 +50,7 @@ const NODE_PALETTE = [
   { type: "tool", label: "Tool Node", icon: "🔧", desc: "Execute a tool (search, calc, report, MCP)" },
 ];
 
-function NodeConfigPanel({ node, availableTools, capabilityGroups, onUpdate, onClose }) {
+function NodeConfigPanel({ node, availableTools, capabilityGroups, agents, onUpdate, onClose }) {
   const [data, setData] = useState(node.data);
 
   const set = (k, v) => setData(d => ({ ...d, [k]: v }));
@@ -85,6 +85,19 @@ function NodeConfigPanel({ node, availableTools, capabilityGroups, onUpdate, onC
 
       {data.type !== "tool" && (
         <>
+          <div className="form-group">
+            <label className="form-label">Linked Agent <span style={{color:"var(--text-muted)",fontWeight:400}}>(optional — enables ACL)</span></label>
+            <select className="form-select" value={data.agent_id || ""} onChange={e => {
+              const selected = agents.find(a => a.id === parseInt(e.target.value));
+              set("agent_id", selected ? selected.id : null);
+            }}>
+              <option value="">— None —</option>
+              {agents.map(a => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+            <div style={{fontSize:11,color:"var(--text-muted)",marginTop:4}}>Link to an agent to enforce tool-level ACL at runtime.</div>
+          </div>
           <div className="form-group">
             <label className="form-label">System Prompt</label>
             <textarea className="form-textarea" value={data.system_prompt || ""} onChange={e => set("system_prompt", e.target.value)} placeholder="You are a..." />
@@ -209,9 +222,13 @@ export default function Builder() {
   const [saving, setSaving] = useState(false);
   const [availableTools, setAvailableTools] = useState(["mcp::yuno-tools::web_search", "mcp::yuno-tools::calculator", "mcp::yuno-tools::report_generator", "mcp::yuno-tools::file_reader"]);
   const [capabilityGroups, setCapabilityGroups] = useState([]);
+  const [agents, setAgents] = useState([]);
   const [nodeCounter, setNodeCounter] = useState(1);
 
   useEffect(() => {
+    // Fetch agents list for ACL linking
+    api.get("/agents/").then(res => setAgents(res.data || [])).catch(() => {});
+
     // Fetch builder-visible tools from Capability API
     api.get("/capabilities/builder-tools").then(res => {
       const groups = res.data?.groups || [];
@@ -254,6 +271,7 @@ export default function Builder() {
           temperature: n.data?.temperature || 0.7,
           memory_enabled: n.data?.memory_enabled !== false,
           guardrails: n.data?.guardrails || {},
+          agent_id: n.data?.agent_id || null,  // preserved for ACL enforcement at runtime
         }
       }));
       setNodes(safeNodes);
@@ -431,6 +449,7 @@ export default function Builder() {
           node={selectedNode}
           availableTools={availableTools}
           capabilityGroups={capabilityGroups}
+          agents={agents}
           onUpdate={(data) => updateNodeData(selectedNode.id, data)}
           onClose={() => setSelectedNode(null)}
         />

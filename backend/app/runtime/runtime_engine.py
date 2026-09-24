@@ -265,8 +265,12 @@ class RuntimeEngine:
                     else:
                         # --- Agent node: Redis memory + Groq-routed LLM ---
                         from app.models.agent import Agent
-                        agent_row = db.query(Agent).filter(Agent.name == nlabel).first()
-                        agent_id = agent_row.id if agent_row else None
+                        # Prefer agent_id stored directly in node data (set by Builder).
+                        # Fall back to name-based lookup for backward compatibility.
+                        agent_id = ndata.get("agent_id")
+                        if agent_id is None:
+                            agent_row = db.query(Agent).filter(Agent.name == nlabel).first()
+                            agent_id = agent_row.id if agent_row else None
 
                         sys_prompt = ndata.get(
                             "system_prompt",
