@@ -32,12 +32,22 @@ class MCPToolResponse(BaseModel):
     server_id: int
     name: str
     description: str
-    input_schema: Dict[str, Any]
-    enabled: bool
+    input_schema: Dict[str, Any] = {}
+    enabled: bool = True
+    exposure: str = "BUILDER_VISIBLE"
+    risk_level: str = "LOW"
+    requires_approval: bool = False
     discovered_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class MCPToolUpdate(BaseModel):
+    exposure: Optional[str] = None  # BUILDER_VISIBLE | AGENT_ASSIGNABLE | PLATFORM_INTERNAL
+    risk_level: Optional[str] = None  # LOW | MEDIUM | HIGH | CRITICAL
+    requires_approval: Optional[bool] = None
+    enabled: Optional[bool] = None
 
 
 class MCPServerResponse(BaseModel):

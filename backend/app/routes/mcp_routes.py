@@ -13,6 +13,7 @@ from app.schemas.mcp_schema import (
     MCPServerResponse,
     MCPServerUpdate,
     MCPToolResponse,
+    MCPToolUpdate,
 )
 from app.mcp.registry import MCPToolRegistry
 from app.mcp.manager import MCPManager
@@ -45,6 +46,63 @@ def get_all_mcp_tools(db: Session = Depends(get_db)):
                 "description": t.description,
             })
     return results
+
+
+@router.get("/tools/manage")
+def list_all_tools_for_management(db: Session = Depends(get_db)):
+    """List all MCP tools across all servers with exposure, risk level, approval requirement, and status."""
+    tools = db.query(MCPTool).join(MCPServer).all()
+    results = []
+    for t in tools:
+        results.append({
+            "id": t.id,
+            "server_id": t.server_id,
+            "server_name": t.server.name if t.server else "unknown",
+            "name": t.name,
+            "formatted_name": f"mcp::{t.server.name}::{t.name}" if t.server else t.name,
+            "description": t.description,
+            "exposure": t.exposure,
+            "risk_level": t.risk_level,
+            "requires_approval": t.requires_approval,
+            "enabled": t.enabled,
+            "discovered_at": t.discovered_at.isoformat() if t.discovered_at else None,
+        })
+    return results
+
+
+@router.put("/tools/{tool_id}")
+def update_mcp_tool_configuration(tool_id: int, payload: MCPToolUpdate, db: Session = Depends(get_db)):
+    """Admin configuration: Update an MCP tool's exposure tier, risk level, approval requirement, or enabled status."""
+    tool = db.query(MCPTool).filter(MCPTool.id == tool_id).first()
+    if not tool:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MCP Tool not found.")
+
+    if payload.exposure is not None:
+        if payload.exposure not in ("BUILDER_VISIBLE", "AGENT_ASSIGNABLE", "PLATFORM_INTERNAL"):
+            raise HTTPException(status_code=400, detail="Invalid exposure tier")
+        tool.exposure = payload.exposure
+    if payload.risk_level is not None:
+        if payload.risk_level not in ("LOW", "MEDIUM", "HIGH", "CRITICAL"):
+            raise HTTPException(status_code=400, detail="Invalid risk level")
+        tool.risk_level = payload.risk_level
+    if payload.requires_approval is not None:
+        tool.requires_approval = payload.requires_approval
+    if payload.enabled is not None:
+        tool.enabled = payload.enabled
+
+    db.commit()
+    db.refresh(tool)
+    return {
+        "status": "success",
+        "tool": {
+            "id": tool.id,
+            "name": tool.name,
+            "exposure": tool.exposure,
+            "risk_level": tool.risk_level,
+            "requires_approval": tool.requires_approval,
+            "enabled": tool.enabled,
+        }
+    }
 
 
 @router.post("", response_model=MCPServerResponse, status_code=status.HTTP_201_CREATED)

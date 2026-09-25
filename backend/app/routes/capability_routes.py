@@ -77,3 +77,9 @@ def get_github_integration_status():
         "docker_available": docker_ok,
         "enabled": True,
     }
+
+
+legacy_router = APIRouter(prefix="/capabilities", tags=["Capabilities Legacy"])
+legacy_router.add_api_route("/builder-tools", get_builder_tools, methods=["GET"])
+legacy_router.add_api_route("/agent-tools", get_agent_assignable_tools, methods=["GET"])
+legacy_router.add_api_route("/integrations/github/status", get_github_integration_status, methods=["GET"])

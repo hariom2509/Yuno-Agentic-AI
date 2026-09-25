@@ -9,6 +9,10 @@
 
 A **production-grade, stateful multi-agent AI orchestration platform** built with Python, FastAPI, LangGraph, React, PostgreSQL, Redis, and Celery. Designed for enterprise deployments, it compiles visual **ReactFlow** node graphs into live **LangGraph StateGraphs** at runtime — featuring **Human-in-the-Loop (HITL)** approval workflows, **Just-In-Time (JIT) MCP tool scoping** for ~90% token reduction, a 3-tier capability security model with per-agent ACL enforcement, SHA-256 idempotency protection, and real-time execution observability via WebSockets and SSE.
 
+<p align="center">
+  <img src="docs/screenshots/01_dashboard.png" alt="Yuno AI Orchestration Platform Dashboard" width="100%" />
+</p>
+
 ---
 
 ## ✨ Key Features
@@ -20,7 +24,8 @@ A **production-grade, stateful multi-agent AI orchestration platform** built wit
 | **Human-in-the-Loop (HITL)** | LangGraph `interrupt()` pauses execution on destructive operations; operators approve or reject via Monitoring UI; resumes via `Command(resume=)` |
 | **MCP Protocol Integration** | Full JSON-RPC 2.0 Model Context Protocol support over `stdio` and `http` transports — connects to any MCP-compliant tool server |
 | **JIT MCP Tool Scoping** | `CapabilityRegistry` dynamically scopes tool schemas per prompt intent, reducing LLM context overhead by ~90% |
-| **3-Tier Capability Security** | `BUILDER_VISIBLE` / `AGENT_ASSIGNABLE` / `PLATFORM_INTERNAL` exposure tiers with per-agent ACL enforcement via junction table |
+| **3-Tier Capability Security** | `BUILDER_VISIBLE` / `AGENT_ASSIGNABLE` / `PLATFORM_INTERNAL` exposure tiers with explicit Admin ACL enforcement via `agent_mcp_tools` junction table (least-privilege by default) |
+| **Admin & Security Governance** | Dedicated Admin panel to configure tool exposure, risk levels (`LOW` to `CRITICAL`), HITL approval gates, server transports, and per-agent tool assignments |
 | **SHA-256 Idempotency Guard** | Deterministic hash (`execution_id:node_id:tool_name`) prevents duplicate side-effecting tool calls across Celery retries |
 | **Automated Failure Recovery** | Catches runtime exceptions, triggers GitHub issue creation via MCP, gated behind HITL approval |
 | **Redis Conversational Memory** | Sliding 20-message window context per agent thread with 24h TTL and in-memory fallback |
@@ -98,6 +103,8 @@ The `RuntimeEngine` parses the workflow's ReactFlow JSON (`nodes`, `edges`) at r
 - Edges with `condition` fields generate **conditional branching** via `add_conditional_edges()` based on substring evaluation of upstream node output
 - The compiled graph is executed with a `thread_id`-isolated checkpointer for durable state
 
+![Visual ReactFlow Multi-Agent Workflow Builder](docs/screenshots/02_visual_builder.png)
+
 ### 2. Human-in-the-Loop (HITL) Pause & Resume
 
 ```
@@ -126,6 +133,8 @@ Agent calls destructive tool
 ```
 
 Hardcoded high-risk operations that always require approval: `drop_table`, `truncate_table`, `delete_repository`.
+
+![Live Execution Monitoring with Interactive HITL Approval Gate](docs/screenshots/03_monitoring_hitl.png)
 
 ### 3. Model Context Protocol (MCP) Integration
 
@@ -182,6 +191,18 @@ Human approves → github-mcp::create_issue posts structured
                  failure report to target repository
 ```
 
+### 7. Autonomous Agent Management & Safety Guardrails
+
+Configure specialized agent personas with granular model selection (Groq Llama 3.3 70B, OpenAI GPT-4o, Google Gemini Flash), system instructions, temperature, conversational memory, and strict input/output guardrails (blocked topics, max output length, JSON mode).
+
+![Autonomous Agent Management & Guardrails](docs/screenshots/07_agents_management.png)
+
+### 8. Production-Ready Multi-Agent Workflow Templates
+
+Deploy complex multi-agent topologies in one click — including Research & Analysis, Customer Support, Code Review, and Data Pipeline workflows.
+
+![One-Click Multi-Agent Workflow Templates](docs/screenshots/08_workflow_templates.png)
+
 ---
 
 ## 🗄️ Database Schema
@@ -202,17 +223,44 @@ Human approves → github-mcp::create_issue posts structured
 
 ---
 
-## 🔒 3-Tier Capability Security Model
+## 🔒 3-Tier Capability Security & Governance Model
 
 All MCP tools are classified and enforced across three exposure tiers:
 
-| Tier | Visibility | Example Tools |
-|---|---|---|
-| `BUILDER_VISIBLE` | Workflow canvas & node configuration | `web_search`, `calculator`, `report_generator`, `file_reader` |
-| `AGENT_ASSIGNABLE` | Agents with explicit ACL grant only | `postgres-mcp::query_database`, `postgres-mcp::list_tables` |
-| `PLATFORM_INTERNAL` | Runtime automation only — never user-configurable | `github-mcp::create_issue`, `github-mcp::delete_repository` |
+| Tier | Visibility | Assignment Boundary | Example Tools |
+|---|---|---|---|
+| `BUILDER_VISIBLE` | Workflow canvas & tool nodes | Directly selectable by workflow designers | `web_search`, `calculator`, `report_generator`, `file_reader` |
+| `AGENT_ASSIGNABLE` | Autonomous Agent nodes only | Explicitly assigned by Admin via `agent_mcp_tools` junction table | `postgres-mcp::execute_select`, `postgres-mcp::list_tables` |
+| `PLATFORM_INTERNAL` | Runtime automation only | Never user-configurable; triggered by platform policies | `github-mcp::create_issue`, `github-mcp::delete_repository` |
 
-All `PLATFORM_INTERNAL` calls and destructive `AGENT_ASSIGNABLE` operations (`drop_table`, `truncate_table`) are **always** gated behind `HITL interrupt()` regardless of node configuration.
+### Least-Privilege Agent Creation & Runtime Enforcement
+
+1. **Least-Privilege by Default**: Newly created agents start with zero external tool permissions.
+2. **Administrative Authorization**: Administrators explicitly grant `AGENT_ASSIGNABLE` tools via the **Admin & Security** panel (`/admin`) or `POST /agents/{agent_id}/mcp-tools`.
+3. **Builder Node Linking**: When designing workflows in the ReactFlow visual builder, selecting an agent node stores its database `agent_id` directly in the node configuration.
+4. **Runtime ACL Verification**: When executing a tool call, `RuntimeEngine` resolves `agent_id` from node data and calls `MCPAuthorizationService.verify_agent_tool_access()`. If the tool is not in `agent_mcp_tools`, execution is immediately aborted with `MCPAuthorizationError`.
+5. **Human-In-The-Loop Approval Gates**: Destructive operations (`drop_table`, `truncate_table`, `delete_repository`) and high-risk operations flagged with `requires_approval = True` automatically trigger `interrupt()` in LangGraph, pausing execution until approved or rejected via the Monitoring UI.
+6. **Application-Level SQL SELECT Enforcement**: In addition to ACL checks, database MCP queries enforce strict read-only query semantics at the application layer.
+
+### Admin & Security Governance Panel (`/admin`)
+
+The dedicated **Admin** panel (`/admin`) provides centralized operational governance across capability exposures, agent permissions, and server health:
+
+#### 1. MCP Tools 3-Tier Security & HITL Approval Gates
+Real-time auditing and live configuration of tool exposure tiers (`BUILDER_VISIBLE`, `AGENT_ASSIGNABLE`, `PLATFORM_INTERNAL`), risk classifications (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`), and HITL approval flags via `PUT /api/mcp-servers/tools/{tool_id}`.
+
+![Admin MCP Tools & 3-Tier Security](docs/screenshots/04_admin_tools_security.png)
+
+#### 2. Granular Per-Agent Capability Authorization (ACL Manager)
+Granular per-agent tool permission manager allowing operators to view granted capabilities, add tools via `POST /api/agents/{id}/mcp-tools`, or revoke access via `DELETE /api/agents/{id}/mcp-tools/{tool_name}`.
+
+![Admin Agent Tool Permissions ACL](docs/screenshots/05_admin_agent_acls.png)
+
+#### 3. MCP Server Registry & Transports
+Live visibility into registered MCP servers, transport types (`stdio` vs. `http`), launch commands/endpoints, and server enablement toggles.
+
+![Admin MCP Server Registry & Transports](docs/screenshots/06_admin_mcp_servers.png)
+
 
 ---
 
@@ -339,9 +387,9 @@ cd backend
 pytest tests/ -v
 ```
 
-**18 tests — all passing.** Coverage includes:
+**19 tests — all passing.** Coverage includes:
 
-- Agent CRUD operations
+- Agent CRUD operations & explicit least-privilege tool ACL assignment
 - Workflow creation and template deployment
 - RuntimeEngine graph & default workflow execution
 - Guardrails input/output validation
@@ -391,12 +439,12 @@ yuno_full_platform/
 │   │   ├── tools/                # Native Python tools (web_search, calculator, report_generator)
 │   │   ├── websocket/            # WebSocket connection manager & sync-to-async event bridge
 │   │   └── static/               # Compiled React build (served in single-container mode)
-│   ├── tests/                    # pytest integration & unit tests (18 tests)
+│   ├── tests/                    # pytest integration & unit tests (19 tests)
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx               # React Router layout & sidebar navigation
-│   │   ├── pages/                # Dashboard, Agents, Workflows, Builder, Monitoring, Skills, Templates
+│   │   ├── pages/                # Dashboard, Agents, Workflows, Builder, Monitoring, Skills, Templates, Admin
 │   │   ├── services/api.js       # Axios client with dynamic host resolution
 │   │   └── styles/global.css     # Global design system
 │   └── package.json

@@ -12,6 +12,7 @@ const YUNO_TOOLS = [
   { id: "mcp::yuno-tools::calculate_metrics", label: "Calculate Metrics" },
   { id: "mcp::yuno-tools::format_report", label: "Format Report" },
 ];
+const DEFAULT_TOOLS = YUNO_TOOLS;
 
 const POSTGRES_MCP_TOOLS = [
   { id: "mcp::postgres-mcp::inspect_schema", label: "Inspect Schema", risk: "LOW", requires_approval: false },
@@ -200,11 +201,16 @@ function AgentModal({ agent, availableTools, onClose, onSaved }) {
           {/* Group 2: External MCP Integrations - PostgreSQL MCP */}
           <div className="form-group" style={{ marginBottom: 24 }}>
             <div className="flex items-center justify-between mb-12">
-              <label className="form-label" style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-bright)", marginBottom: 0 }}>
-                External MCP Integration: PostgreSQL MCP
-              </label>
+              <div>
+                <label className="form-label" style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-bright)", marginBottom: 0 }}>
+                  External MCP Integration: PostgreSQL MCP
+                </label>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                  Controlled via 3-Tier Security. Administrators assign authorized tools in <a href="/admin" style={{ color: "var(--accent)", textDecoration: "underline" }}>Admin & Security</a>.
+                </div>
+              </div>
               <span style={{ fontSize: "11px", padding: "2px 8px", background: "var(--accent-glow)", border: "1px solid var(--accent)", borderRadius: "12px", color: "var(--accent)", fontWeight: 600 }}>
-                Enabled ✓
+                ACL Governed
               </span>
             </div>
             <div className="card-grid card-grid-2" style={{ gap: 8 }}>
@@ -333,18 +339,21 @@ export default function Agents() {
 
   const load = async () => {
     try {
-      const r = await api.get("/agents/");
-      setAgents(r.data || []);
-      const s = await api.get("/skills/");
-      const skillNames = (s.data || []).map(sk => sk.name);
+      const r = await api.get("/agents/").catch(() => ({ data: [] }));
+      setAgents(Array.isArray(r.data) ? r.data : []);
+      const s = await api.get("/skills/").catch(() => ({ data: [] }));
+      const skillNames = (Array.isArray(s.data) ? s.data : []).map(sk => sk.name);
       
-      const capRes = await api.get("/capabilities/agent-tools").catch(() => ({ data: [] }));
-      const agentMcpTools = (capRes.data || []).map(t => ({
-        id: t.canonical_name,
-        label: `${t.name.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())} (${t.server_name})`,
+      const capRes = await api.get("/api/capabilities/agent-tools").catch(() => ({ data: [] }));
+      const capData = Array.isArray(capRes.data) ? capRes.data : [];
+      const agentMcpTools = capData.map(t => ({
+        id: t.canonical_name || t.id,
+        label: `${t.name ? t.name.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()) : (t.label || t.id)} (${t.server_name || "mcp"})`,
       }));
 
       setAvailableTools([...DEFAULT_TOOLS, ...agentMcpTools, ...skillNames]);
+    } catch (err) {
+      console.error("Failed to load agents", err);
     } finally {
       setLoading(false);
     }

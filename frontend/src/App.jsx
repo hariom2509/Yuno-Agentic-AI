@@ -1,7 +1,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
-import { Bot, GitBranch, Activity, LayoutTemplate, BarChart3, Workflow, Wrench } from "lucide-react";
+import { Bot, GitBranch, Activity, LayoutTemplate, BarChart3, Workflow, Wrench, ShieldCheck } from "lucide-react";
 
 import "./styles/global.css";
 import Dashboard from "./pages/Dashboard";
@@ -11,6 +11,7 @@ import Builder from "./pages/Builder";
 import Monitoring from "./pages/Monitoring";
 import Templates from "./pages/Templates";
 import Skills from "./pages/Skills";
+import Admin from "./pages/Admin";
 
 function Sidebar() {
   return (
@@ -49,6 +50,11 @@ function Sidebar() {
       <NavLink to="/monitoring" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
         <Activity size={16} /> Monitoring
       </NavLink>
+
+      <div className="nav-section-label">Governance</div>
+      <NavLink to="/admin" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
+        <ShieldCheck size={16} /> Admin & Security
+      </NavLink>
     </aside>
   );
 }
@@ -68,6 +74,7 @@ export default function App() {
             <Route path="/monitoring" element={<Monitoring />} />
             <Route path="/templates" element={<Templates />} />
             <Route path="/skills" element={<Skills />} />
+            <Route path="/admin" element={<Admin />} />
           </Routes>
         </main>
       </div>

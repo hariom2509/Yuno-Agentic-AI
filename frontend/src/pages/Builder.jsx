@@ -230,8 +230,8 @@ export default function Builder() {
     api.get("/agents/").then(res => setAgents(res.data || [])).catch(() => {});
 
     // Fetch builder-visible tools from Capability API
-    api.get("/capabilities/builder-tools").then(res => {
-      const groups = res.data?.groups || [];
+    api.get("/api/capabilities/builder-tools").then(res => {
+      const groups = (res.data && Array.isArray(res.data.groups)) ? res.data.groups : [];
       setCapabilityGroups(groups);
       const toolList = [];
       groups.forEach(group => {

@@ -32,7 +32,7 @@ from app.routes.monitoring_routes import router as monitoring_router
 from app.routes.template_routes import router as template_router
 from app.routes.skill_routes import router as skill_router
 from app.routes.mcp_routes import router as mcp_router
-from app.routes.capability_routes import router as capability_router
+from app.routes.capability_routes import router as capability_router, legacy_router as legacy_capability_router
 
 from app.websocket.manager import manager
 
@@ -83,6 +83,7 @@ app.include_router(template_router)
 app.include_router(skill_router)
 app.include_router(mcp_router)
 app.include_router(capability_router)
+app.include_router(legacy_capability_router)
 
 
 
